@@ -1,0 +1,14 @@
+﻿.env
+.env.local
+node_modules/
+dist/
+build/
+.next/
+__pycache__/
+*.pyc
+.venv/
+.vscode/
+.idea/
+staging/
+checkpoints/
+venv/

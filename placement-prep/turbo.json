@@ -1,0 +1,27 @@
+﻿{
+  "version": "1",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**", ".next/**"],
+      "cache": true
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": [],
+      "cache": true
+    },
+    "test": {
+      "outputs": ["coverage/**"],
+      "cache": true
+    },
+    "format": {
+      "outputs": [],
+      "cache": false
+    }
+  },
+  "globalEnv": ["NODE_ENV"]
+}
