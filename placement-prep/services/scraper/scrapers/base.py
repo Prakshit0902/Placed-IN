@@ -68,10 +68,18 @@ class BaseScraper(ABC):
             self.checkpoint.update_last_run()
             return None
 
+        # Apply SCRAPE_LIMIT from config (-1 means no limit)
+        limit = config.SCRAPE_LIMIT
+        if limit != -1:
+            to_process = new_urls[:limit]
+            print(f"[{self.source}] Limiting to {len(to_process)} URLs (SCRAPE_LIMIT={limit})")
+        else:
+            to_process = new_urls
+
         all_records = []
 
-        for i, url in enumerate(new_urls):
-            print(f"[{self.source}] Scraping {i + 1}/{len(new_urls)}: {url}")
+        for i, url in enumerate(to_process):
+            print(f"[{self.source}] Scraping {i + 1}/{len(to_process)}: {url}")
             records = self._scrape_with_retry(url)
 
             if records:
@@ -81,7 +89,7 @@ class BaseScraper(ABC):
                 print(f"[{self.source}] No records returned for {url}, skipping")
 
             # Respectful delay between requests
-            if i < len(new_urls) - 1:
+            if i < len(to_process) - 1:
                 time.sleep(config.REQUEST_DELAY_SECONDS)
 
         self.checkpoint.update_last_run()
