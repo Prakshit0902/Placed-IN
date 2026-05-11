@@ -175,7 +175,9 @@ class Embedder:
         if record.get("summary"):
             parts.append(f"Summary: {record['summary']}")
 
-        if record.get("questions"):
+        if record.get("question_text"):
+            parts.append(f"Question: {record['question_text']}")
+        elif record.get("questions"):
             questions_text = " | ".join(record["questions"][:10])
             parts.append(f"Questions: {questions_text}")
 
@@ -230,7 +232,7 @@ class Embedder:
         """
         return {
             "source": record.get("source", "unknown"),
-            "url": record.get("url", ""),
+            "url": record.get("url", "") or record.get("question_url", ""),
             "company": record.get("company", "Unknown"),
             "role": record.get("role", "SDE"),
             "round": record.get("round", "unknown"),
@@ -239,7 +241,12 @@ class Embedder:
             "year": record.get("year", 0),
             "topics": record.get("topics", []),
             "questions": record.get("questions", []),
+            "question_text": record.get("question_text", ""),
+            "question_url": record.get("question_url", ""),
             "summary": record.get("summary", ""),
+            "frequency_indicator": record.get("frequency_indicator", "unknown"),
+            "acceptance_rate": record.get("acceptance_rate", ""),
+            "solution_count": record.get("solution_count", 0),
         }
 
     def _store_in_batches(self, points: list[PointStruct]) -> int:
