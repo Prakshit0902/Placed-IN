@@ -12,7 +12,7 @@ class ScraperConfig(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
 
     # Groq (primary LLM provider)
-    GROQ_API_KEY: Optional[str] = None
+    GROQ_API_KEY: str
     GROQ_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 
     # Qdrant
