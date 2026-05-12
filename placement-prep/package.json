@@ -1,22 +1,23 @@
-﻿{
-  "name": "placement-prep",
-  "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "services/*"
-  ],
-  "scripts": {
-    "dev": "turbo run dev --parallel",
-    "build": "turbo run build",
-    "lint": "turbo run lint",
-    "clean": "turbo clean && rm -rf node_modules",
-    "format": "turbo run format",
-    "test": "turbo run test"
-  },
-  "devDependencies": {
-    "turbo": "^1.10.0",
-    "typescript": "^5.3.0",
-    "eslint": "^8.50.0"
-  }
+{
+    "name": "placement-prep",
+    "private": true,
+    "packageManager": "npm@10.9.0",
+    "workspaces": [
+        "apps/*",
+        "packages/*",
+        "services/*"
+    ],
+    "scripts": {
+        "dev": "turbo run dev --parallel",
+        "build": "turbo run build",
+        "lint": "turbo run lint",
+        "clean": "turbo clean && rm -rf node_modules",
+        "format": "turbo run format",
+        "test": "turbo run test"
+    },
+    "devDependencies": {
+        "turbo": "^2.9.12",
+        "typescript": "^5.3.0",
+        "eslint": "^8.50.0"
+    }
 }
