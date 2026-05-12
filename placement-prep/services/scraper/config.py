@@ -12,7 +12,7 @@ class ScraperConfig(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
 
     # Groq (primary LLM provider)
-    GROQ_API_KEY: str
+    GROQ_API_KEY: Optional[str] = None
     GROQ_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 
     # Qdrant
@@ -31,11 +31,15 @@ class ScraperConfig(BaseSettings):
     STAGING_DIR: str = "./staging"
     CHECKPOINT_DIR: str = "./checkpoints"
 
+    # Supabase (PostgreSQL)
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+
     # Scraper behavior
     REQUEST_DELAY_SECONDS: float = 2.0
     MAX_RETRIES: int = 3
     BATCH_SIZE: int = 50
-    SCRAPE_LIMIT: int = 15
+    SCRAPE_LIMIT: int = 2
     # Local LLM removed; using Groq API as primary and Gemini as optional fallback
 
     class Config:

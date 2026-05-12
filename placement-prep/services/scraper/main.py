@@ -48,6 +48,25 @@ def run_full_once() -> None:
     run_pipeline_once()
     logger.info("=== Full pipeline run complete ===")
 
+def run_generate_once() -> None:
+    """
+    Generate weekly preparation templates based on Qdrant data and store them in Supabase.
+    """
+    from qdrant_client import QdrantClient
+    from supabase import create_client, Client
+    from config import config
+    from pipeline.template_generator import TemplateGenerator
+
+    logger.info("Initializing Generator...")
+    qdrant = QdrantClient(url=config.QDRANT_URL)
+    supabase: Client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY)
+    
+    generator = TemplateGenerator(qdrant=qdrant, db_conn=supabase)
+    logger.info("Running generation...")
+    generator.generate_all()
+    logger.info("Template generation complete.")
+
+
 
 def run_scheduled() -> None:
     """
@@ -72,10 +91,12 @@ Commands:
   scrape     Run the GFG scraper once and save to staging
   pipeline   Run the cleaning + embedding pipeline once on staged files
   full       Run scraper then pipeline once (good for first test)
+  generate   Generate Supabase prep templates from Qdrant data (run AFTER 'full')
   schedule   Start the scheduler for continuous cron-based operation
 
 Examples:
   python main.py full        # test entire pipeline end to end
+  python main.py generate    # build weekly templates into Supabase
   python main.py scrape      # only scrape, inspect staging/ folder after
   python main.py pipeline    # only clean + embed what is already in staging/
   python main.py schedule    # production mode
@@ -94,6 +115,7 @@ if __name__ == "__main__":
         "scrape": run_scraper_once,
         "pipeline": run_pipeline_once,
         "full": run_full_once,
+        "generate": run_generate_once,
         "schedule": run_scheduled,
     }
 

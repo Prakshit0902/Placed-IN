@@ -74,12 +74,8 @@ class ScrapingOrchestrator:
             self.staging.mark_done(filepath)
             return
 
-        # 2. Clean with LLM (skip if already formatted properly)
-        if raw_records and "question_text" in raw_records[0]:
-            print(f"[Orchestrator] Records already in correct format, skipping LLMCleaner.")
-            cleaned_records = raw_records
-        else:
-            cleaned_records = self.cleaner.clean_batch(raw_records)
+        # 2. Clean with LLM
+        cleaned_records = self.cleaner.clean_batch(raw_records)
         
         if not cleaned_records:
             print(f"[Orchestrator] No records survived cleaning in {filepath}")
