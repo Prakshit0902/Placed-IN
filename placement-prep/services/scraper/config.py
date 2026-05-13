@@ -39,7 +39,7 @@ class ScraperConfig(BaseSettings):
     REQUEST_DELAY_SECONDS: float = 2.0
     MAX_RETRIES: int = 3
     BATCH_SIZE: int = 50
-    SCRAPE_LIMIT: int = 2
+    SCRAPE_LIMIT: int = 3
     # Local LLM removed; using Groq API as primary and Gemini as optional fallback
 
     class Config:

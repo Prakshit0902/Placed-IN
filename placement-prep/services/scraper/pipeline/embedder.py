@@ -10,6 +10,9 @@ from qdrant_client.models import (
 )
 
 from config import config
+from pipeline.topic_mapper import normalize_topics
+from pipeline.quality_validator import QualityValidator
+from pipeline.canonicalizer import SupabaseCanonicalizer
 
 
 class Embedder:
@@ -21,6 +24,10 @@ class Embedder:
         )
         self.available_embedding_model = config.EMBEDDING_MODEL
         self.embedding_dimension = config.EMBEDDING_DIMENSION
+        
+        self.quality_validator = QualityValidator()
+        self.canonicalizer = SupabaseCanonicalizer()
+        
         self._fetch_available_embedding_model()
         self._detect_embedding_dimension()
         self._ensure_collection()
@@ -126,7 +133,30 @@ class Embedder:
         points = []
 
         for i, record in enumerate(records):
-            print(f"[Embedder] Embedding record {i + 1}/{len(records)}")
+            print(f"[Embedder] Processing record {i + 1}/{len(records)}")
+
+            # 1. Topic Normalization
+            if "topics" in record:
+                record["topics"] = normalize_topics(record["topics"])
+
+            # 2. Quality Validation
+            quality = self.quality_validator.validate(record)
+            if not quality.passed:
+                print(f"[Embedder] Dropping record '{record.get('company')}': {quality.rejection_reason}")
+                continue
+                
+            if quality.warnings:
+                print(f"[Embedder] Warnings for record: {quality.warnings}")
+
+            # 3. Canonicalization
+            source_url = record.get("question_url") or record.get("source_url") or ""
+            raw_title = record.get("question_text", "Untitled")[:150] # safeguard length
+            try:
+                canonical_id = self.canonicalizer.resolve_canonical_id(raw_title, source_url, record)
+                record["canonical_id"] = canonical_id
+            except Exception as e:
+                print(f"[Embedder] Canonicalization failed for record {i+1}: {e}")
+                continue
 
             # Build text to embed — combine key fields for richer embedding
             text_to_embed = self._build_embed_text(record)
@@ -138,20 +168,43 @@ class Embedder:
                 continue
 
             point = PointStruct(
-                id=str(uuid.uuid4()),
+                id=canonical_id, # Use Canonical ID (UUID string) as Qdrant ID to seamlessly overwrite/merge
                 vector=vector,
                 payload=self._build_payload(record),
             )
             points.append(point)
 
         if not points:
-            print("[Embedder] No points to store after embedding")
+            print("[Embedder] No points to store after pipeline validation")
             return 0
 
         # Store in batches to avoid overwhelming Qdrant
         stored = self._store_in_batches(points)
         print(f"[Embedder] Stored {stored} records in Qdrant")
         return stored
+
+    def _build_payload(self, record: dict[str, Any]) -> dict[str, Any]:
+        """
+        Build the metadata payload stored alongside the vector.
+        This is what gets returned when a user queries Qdrant.
+        Keep it flat and filterable.
+        """
+        payload = {
+            "canonical_id": record.get("canonical_id", ""),
+            "source": record.get("source", "unknown"),
+            "url": record.get("url", "") or record.get("question_url", ""),
+            "company": record.get("company", "Unknown"),
+            "role": record.get("role", "SDE"),
+            "round": record.get("round", "unknown"),
+            "difficulty": record.get("difficulty", "medium"),
+            "outcome": record.get("outcome", "unknown"),
+            "year": record.get("year", 0),
+            "topics": record.get("topics", []),
+            "questions": record.get("questions", []),
+            "question_text": record.get("question_text", ""),
+            "question_url": record.get("question_url", ""),
+        }
+        return payload
 
     def _build_embed_text(self, record: dict[str, Any]) -> str:
         """
@@ -175,7 +228,9 @@ class Embedder:
         if record.get("summary"):
             parts.append(f"Summary: {record['summary']}")
 
-        if record.get("questions"):
+        if record.get("question_text"):
+            parts.append(f"Question: {record['question_text']}")
+        elif record.get("questions"):
             questions_text = " | ".join(record["questions"][:10])
             parts.append(f"Questions: {questions_text}")
 
@@ -184,63 +239,53 @@ class Embedder:
     def _get_embedding(self, text: str) -> list[float]:
         """
         Get embedding vector from Gemini embedding model.
-        Handles 404 errors by attempting to find an available model.
+        Handles 404 errors by finding an available model.
+        Handles 429 rate limit errors by waiting exactly as long as required.
         """
-        try:
-            result = self.genai_client.models.embed_content(
-                model=self.available_embedding_model,
-                contents=text,
-            )
-            vector = result.embeddings[0].values
-            if len(vector) != self.embedding_dimension:
-                print(
-                    f"[Embedder] Embedding dimension changed from {self.embedding_dimension} to {len(vector)}; updating in-memory dimension"
+        import time
+        import re
+
+        max_retries = 3
+
+        for attempt in range(max_retries):
+            try:
+                result = self.genai_client.models.embed_content(
+                    model=self.available_embedding_model,
+                    contents=text,
                 )
-                self.embedding_dimension = len(vector)
-            return vector
-        except Exception as e:
-            error_msg = str(e)
-            if "404" in error_msg or "not found" in error_msg.lower():
-                print(f"[Embedder] Model '{self.available_embedding_model}' not found, attempting to find available model")
-                self._fetch_available_embedding_model()
-                # Retry with new model
-                try:
-                    result = self.genai_client.models.embed_content(
-                        model=self.available_embedding_model,
-                        contents=text,
+                vector = result.embeddings[0].values
+                if len(vector) != self.embedding_dimension:
+                    print(
+                        f"[Embedder] Embedding dimension changed from {self.embedding_dimension} to {len(vector)}; updating in-memory dimension"
                     )
-                    vector = result.embeddings[0].values
-                    if len(vector) != self.embedding_dimension:
-                        print(
-                            f"[Embedder] Embedding dimension changed from {self.embedding_dimension} to {len(vector)}; updating in-memory dimension"
-                        )
-                        self.embedding_dimension = len(vector)
-                    return vector
-                except Exception as retry_e:
-                    print(f"[Embedder] Retry failed: {retry_e}")
-                    raise
-            else:
+                    self.embedding_dimension = len(vector)
+                return vector
+            except Exception as e:
+                error_msg = str(e)
+                
+                # Handle Rate Limiting (429)
+                if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                    if attempt < max_retries - 1:
+                        # Extract exact retry time from "retry in 41.950s" or fallback to 15s
+                        match = re.search(r"retry.*?(\d+(?:\.\d+)?)\s*s", error_msg, re.IGNORECASE)
+                        delay = float(match.group(1)) + 1.0 if match else 15.0  # Add 1s buffer
+                        print(f"[Embedder] 429 Rate limit hit. Scaling back temporarily. Sleeping {delay:.1f}s (attempt {attempt + 1}/{max_retries})...")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        raise
+
+                # Handle Missing Model (404)
+                if "404" in error_msg or "not found" in error_msg.lower():
+                    print(f"[Embedder] Model '{self.available_embedding_model}' not found, discovering available model...")
+                    self._fetch_available_embedding_model()
+                    if attempt < max_retries - 1:
+                        continue
+
+                # Unhandled error
                 raise
 
-    def _build_payload(self, record: dict[str, Any]) -> dict[str, Any]:
-        """
-        Build the metadata payload stored alongside the vector.
-        This is what gets returned when a user queries Qdrant.
-        Keep it flat and filterable.
-        """
-        return {
-            "source": record.get("source", "unknown"),
-            "url": record.get("url", ""),
-            "company": record.get("company", "Unknown"),
-            "role": record.get("role", "SDE"),
-            "round": record.get("round", "unknown"),
-            "difficulty": record.get("difficulty", "medium"),
-            "outcome": record.get("outcome", "unknown"),
-            "year": record.get("year", 0),
-            "topics": record.get("topics", []),
-            "questions": record.get("questions", []),
-            "summary": record.get("summary", ""),
-        }
+
 
     def _store_in_batches(self, points: list[PointStruct]) -> int:
         """
