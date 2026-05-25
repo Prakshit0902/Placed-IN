@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { getTemplates, getTemplateById, generateSheet } from '../controllers/templates.controller.js'
+import { getTemplates, getTemplateById } from '../controllers/templates.controller.js'
 
 export const templatesRouter = new Hono()
 
@@ -7,7 +7,7 @@ export const templatesRouter = new Hono()
 templatesRouter.get('/', getTemplates)
 
 // GET /api/templates/generate?company=X&role=Y&duration=Z
-templatesRouter.get('/generate', generateSheet)
+// templatesRouter.get('/generate', generateSheet)
 
 // GET /api/templates/:id
 templatesRouter.get('/:id', getTemplateById)
