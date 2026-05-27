@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
@@ -19,5 +19,16 @@
       "outputs": []
     }
   },
-  "globalEnv": ["NODE_ENV"]
+  "globalEnv": ["NODE_ENV"],
+  "globalPassThroughEnv": [
+    "PATH",
+    "SystemRoot",
+    "SystemDrive",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "LOCALAPPDATA",
+    "USERNAME",
+    "USER"
+  ]
 }
