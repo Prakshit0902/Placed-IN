@@ -8,6 +8,48 @@ from app.config import settings
 # Initialize the new google-genai SDK client
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
+# Initialize Groq client
+import groq
+groq_client = None
+if settings.GROQ_API_KEY:
+    groq_client = groq.Groq(api_key=settings.GROQ_API_KEY)
+
+def generate_json(prompt: str, schema_class: type[BaseModel], tier: str = "free", groq_model: str = "llama-3.1-8b-instant", gemini_model: str = "gemini-3.1-flash-lite") -> BaseModel:
+    """
+    Generates structured JSON using Groq for 'free' tier and Gemini for 'premium' tier.
+    """
+    if tier == "free" and groq_client:
+        try:
+            # Groq Llama 3 requires json_object format and the prompt MUST tell it to output JSON
+            prompt_with_instructions = prompt + f"\n\nIMPORTANT: Output ONLY valid JSON matching this schema:\n{schema_class.model_json_schema()}"
+            
+            completion = groq_client.chat.completions.create(
+                model=groq_model,
+                messages=[
+                    {"role": "system", "content": "You are an expert AI assistant. You must respond in valid JSON format."},
+                    {"role": "user", "content": prompt_with_instructions}
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            )
+            return schema_class.model_validate_json(completion.choices[0].message.content)
+        except Exception as e:
+            print(f"Groq generation failed: {e}. Falling back to Gemini.")
+            # Fallback to Gemini if Groq fails
+            pass
+            
+    # Gemini path (premium or fallback)
+    response = client.models.generate_content(
+        model=gemini_model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type='application/json',
+            response_schema=schema_class,
+        )
+    )
+    return schema_class.model_validate_json(response.text)
+
+
 class SearchFilters(BaseModel):
     company: Optional[str] = Field(None, description="The target company (e.g. Amazon, Google, Microsoft)")
     topics: Optional[List[str]] = Field(None, description="LeetCode topic tags (e.g. ['array', 'dynamic-programming', 'graph'])")
@@ -51,7 +93,7 @@ def extract_filters_gemini(query: str) -> Dict[str, Any]:
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.1-flash-lite',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type='application/json',

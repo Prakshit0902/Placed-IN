@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import search, personalization, leetcode
+from app.routers import search, personalization, leetcode, explain
 from app.config import settings
 
 app = FastAPI(title="Placement Prep AI Service")
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(search.router, prefix="/api/query/search", tags=["search"])
 app.include_router(personalization.router, prefix="/api/ingest/personalize", tags=["personalize"])
 app.include_router(leetcode.router, prefix="/api/leetcode", tags=["leetcode"])
+app.include_router(explain.router, prefix="/api/query/explain", tags=["explain"])
 
 @app.get("/health")
 def health():
