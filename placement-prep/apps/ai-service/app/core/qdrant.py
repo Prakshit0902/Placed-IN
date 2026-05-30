@@ -8,6 +8,19 @@ def get_client() -> QdrantClient:
     global _client
     if _client is None:
         _client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY)
+        try:
+            _client.create_payload_index(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                field_name="difficulty",
+                field_schema="keyword"
+            )
+            _client.create_payload_index(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                field_name="topic_tags",
+                field_schema="keyword"
+            )
+        except Exception as e:
+            print(f"Error creating Qdrant payload indexes: {e}")
     return _client
 
 async def semantic_search(

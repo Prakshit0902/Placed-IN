@@ -2,106 +2,130 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
 const QDRANT_API_KEY = process.env.QDRANT_API_KEY || '';
-const COLLECTION_NAME = process.env.QDRANT_COLLECTION_NAME || 'placement_questions';
+const COLLECTION_NAME = process.env.QDRANT_COLLECTION_NAME || 'leetcode_problems';
 
 export const qdrantClient = new QdrantClient({
   url: QDRANT_URL,
   apiKey: QDRANT_API_KEY,
 });
 
-export interface QuestionRecord {
-  id: string;
-  company: string;
-  role: string;
-  round: string;
-  difficulty: string;
-  topics: string[];
-  question_text: string;
-  question_url: string;
-  frequency_score?: number;
-  acceptance_rate?: string;
+/**
+ * Matches the ACTUAL payload stored in the Qdrant `leetcode_problems` collection.
+ * These fields were set during ingestion in `ingest_to_qdrant_local.ipynb`.
+ *
+ * NOTE: `company`, `frequency`, and `acceptance` data lives in
+ * Supabase `lc_company_questions` — NOT in Qdrant.
+ */
+export interface QdrantQuestionPayload {
+  id: number;
+  title: string;
+  slug: string;
+  difficulty: string; // "Easy" | "Medium" | "Hard"
+  category: string;   // "Algorithms" | "Database" | "JavaScript" | etc.
+  topic_tags: string[];
 }
 
-export async function searchQuestions(params: {
-  company: string;
-  role?: string;
-  topics?: string[];
+/**
+ * Scroll Qdrant collection with payload-level filters.
+ * No vector search — pure metadata filtering.
+ */
+export async function scrollQuestions(params: {
   difficulty?: string;
+  topicTags?: string[];
   limit?: number;
-}): Promise<QuestionRecord[]> {
-  const { company, role, topics, difficulty, limit = 100 } = params;
+}): Promise<QdrantQuestionPayload[]> {
+  const { difficulty, topicTags, limit = 100 } = params;
+
+  const mustFilters: any[] = [];
+
+  if (difficulty) {
+    mustFilters.push({
+      key: 'difficulty',
+      match: { value: difficulty },
+    });
+  }
+
+  if (topicTags && topicTags.length > 0) {
+    // Each tag is an "any" match — at least one of the provided tags must be present
+    mustFilters.push({
+      key: 'topic_tags',
+      match: { any: topicTags },
+    });
+  }
 
   try {
-    // Use scroll to get all matching points
     const results = await qdrantClient.scroll(COLLECTION_NAME, {
-      filter: {
-        must: [
-          {
-            key: 'company',
-            match: { value: company },
-          },
-        ],
-      },
+      filter: mustFilters.length > 0 ? { must: mustFilters } : undefined,
       limit,
       with_payload: true,
-      with_vectors: false,
+      with_vector: false,
     });
 
-    const questions: QuestionRecord[] = [];
+    const questions: QdrantQuestionPayload[] = [];
 
-    if (results.results) {
-      for (const point of results.results) {
+    if (results.points) {
+      for (const point of results.points) {
         const payload = point.payload as Record<string, any>;
-
-        // Filter by role if specified
-        if (role && payload.role !== role) continue;
-
-        // Filter by difficulty if specified
-        if (difficulty && payload.difficulty !== difficulty) continue;
-
-        // Filter by topics if specified
-        if (topics && topics.length > 0) {
-          const questionTopics = (payload.topics || []).map((t: string) =>
-            t.toLowerCase()
-          );
-          const hasMatchingTopic = topics.some(
-            (topic) => questionTopics.includes(topic.toLowerCase())
-          );
-          if (!hasMatchingTopic) continue;
-        }
-
         questions.push({
-          id: (point.id as string) || '',
-          company: payload.company || '',
-          role: payload.role || 'SDE',
-          round: payload.round || 'dsa',
-          difficulty: payload.difficulty || 'medium',
-          topics: payload.topics || [],
-          question_text: payload.question_text || payload.title || '',
-          question_url: payload.question_url || payload.url || '',
-          frequency_score: payload.frequency_score,
-          acceptance_rate: payload.acceptance_rate,
+          id: payload.id ?? (typeof point.id === 'number' ? point.id : 0),
+          title: payload.title ?? '',
+          slug: payload.slug ?? '',
+          difficulty: payload.difficulty ?? 'Medium',
+          category: payload.category ?? 'Algorithms',
+          topic_tags: payload.topic_tags ?? [],
         });
       }
     }
 
     return questions;
   } catch (error) {
-    console.error('Qdrant search error:', error);
+    console.error('Qdrant scroll error:', error);
     return [];
   }
 }
 
-export async function getQuestionsByTopics(
-  company: string,
-  topics: string[],
-  difficulty?: string,
-  limit: number = 20
-): Promise<QuestionRecord[]> {
-  return searchQuestions({
-    company,
-    topics,
-    difficulty,
-    limit,
-  });
+/**
+ * Perform semantic (vector) search against the collection.
+ * Requires a pre-computed query vector (384-dim for bge-small-en-v1.5).
+ */
+export async function semanticSearch(params: {
+  queryVector: number[];
+  difficulty?: string;
+  topicTags?: string[];
+  limit?: number;
+}): Promise<QdrantQuestionPayload[]> {
+  const { queryVector, difficulty, topicTags, limit = 20 } = params;
+
+  const mustFilters: any[] = [];
+
+  if (difficulty) {
+    mustFilters.push({ key: 'difficulty', match: { value: difficulty } });
+  }
+  if (topicTags && topicTags.length > 0) {
+    mustFilters.push({ key: 'topic_tags', match: { any: topicTags } });
+  }
+
+  try {
+    const results = await qdrantClient.search(COLLECTION_NAME, {
+      vector: queryVector,
+      filter: mustFilters.length > 0 ? { must: mustFilters } : undefined,
+      limit,
+      with_payload: true,
+    });
+
+    return results.map((point) => {
+      const payload = point.payload as Record<string, any>;
+      return {
+        id: payload.id ?? 0,
+        title: payload.title ?? '',
+        slug: payload.slug ?? '',
+        difficulty: payload.difficulty ?? 'Medium',
+        category: payload.category ?? 'Algorithms',
+        topic_tags: payload.topic_tags ?? [],
+      };
+    });
+  } catch (error) {
+    console.error('Qdrant semantic search error:', error);
+    return [];
+  }
 }
