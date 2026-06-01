@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     subscription_tier TEXT NOT NULL DEFAULT 'free'
         CHECK (subscription_tier IN ('free', 'premium', 'enterprise')),
     subscription_expires_at TIMESTAMPTZ,
+    solved_slugs JSONB,                  -- Legacy cache; prefer leetcode_user_problems
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -65,9 +66,29 @@ CREATE TABLE IF NOT EXISTS public.personalized_sheets (
     adjustments_made JSONB,               -- What the LLM changed
     completion_status TEXT NOT NULL DEFAULT 'in_progress'
         CHECK (completion_status IN ('not_started', 'in_progress', 'completed', 'abandoned')),
+    readiness_score JSONB,
+    plan_version INT NOT NULL DEFAULT 1,
+    week_question_ids JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
+
+-- 4b. Per-user LeetCode solve history (extension sync)
+CREATE TABLE IF NOT EXISTS public.leetcode_user_problems (
+    user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    problem_slug TEXT NOT NULL,
+    problem_id INTEGER REFERENCES public.lc_problems(id),
+    difficulty TEXT,
+    topics TEXT[],
+    status TEXT NOT NULL DEFAULT 'SOLVED'
+        CHECK (status IN ('SOLVED', 'ATTEMPTED')),
+    solved_at TIMESTAMPTZ,
+    synced_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    PRIMARY KEY (user_id, problem_slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lup_user ON public.leetcode_user_problems(user_id);
+CREATE INDEX IF NOT EXISTS idx_lup_user_problem_id ON public.leetcode_user_problems(user_id, problem_id);
 
 -- 5. Per-Question Progress Tracking
 CREATE TABLE IF NOT EXISTS public.sheet_progress (

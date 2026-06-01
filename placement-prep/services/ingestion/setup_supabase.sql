@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.lc_problems (
     likes INTEGER,
     dislikes INTEGER,
     ac_rate TEXT,
+    internal_difficulty SMALLINT CHECK (internal_difficulty IS NULL OR (internal_difficulty BETWEEN 1 AND 10)),
     total_accepted TEXT,
     total_submission TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
