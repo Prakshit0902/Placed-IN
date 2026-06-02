@@ -78,6 +78,17 @@ export async function generatePersonalizedSheet(
   });
 }
 
+export async function generateDeepPersonalizedSheet(
+  token: string,
+  body: { company: string; duration_days: number }
+) {
+  return apiFetch<{ success: boolean; data: any }>('/api/users/sheets/generate/deep', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
 export async function setLeetcodeUsername(token: string, username: string) {
   return apiFetch<{ success: boolean }>('/api/users/leetcode-username', {
     method: 'POST',
@@ -92,6 +103,52 @@ export async function updateProfile(token: string, body: { full_name?: string; l
     token,
     body: JSON.stringify(body),
   });
+}
+
+export type LeetcodeSyncProblem = {
+  slug: string;
+  status?: 'SOLVED' | 'ATTEMPTED';
+  solved_at?: string;
+};
+
+export async function syncLeetcodeData(
+  token: string,
+  payload: { problems: LeetcodeSyncProblem[] } | { solved_slugs: string[] }
+) {
+  return apiFetch<{ success: boolean; message: string; count?: number; solved_count?: number }>(
+    '/api/users/leetcode/sync',
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function syncLeetcodeRawChunk(token: string, submissions: any[]) {
+  return apiFetch<{ success: boolean; message: string }>('/api/users/leetcode/sync-raw', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ submissions }),
+  });
+}
+
+export async function syncLeetcodeAggregate(token: string, timeframe?: string) {
+  return apiFetch<{ success: boolean; message: string }>('/api/users/leetcode/sync-aggregate', {
+    method: 'POST',
+    token,
+    body: timeframe ? JSON.stringify({ timeframe }) : undefined,
+  });
+}
+
+export async function getLeetcodeSyncStatus(token: string) {
+  return apiFetch<{ 
+    success: boolean; 
+    sync_level: string | null;
+    last_synced_at: string | null;
+    latest_timestamp: number | null;
+    oldest_timestamp: number | null;
+  }>('/api/users/leetcode/sync-status', { token });
 }
 
 // ---- Progress ----
