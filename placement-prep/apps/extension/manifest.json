@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Placement Prep - LeetCode Sync",
+  "version": "1.0.1",
+  "description": "Deep analysis sync for Placement Prep platform.",
+  "permissions": [
+    "cookies",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://leetcode.com/*",
+    "https://*.leetcode.com/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://leetcode.com/*", "https://*.leetcode.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:3000/*"
+    ]
+  },
+  "action": {
+    "default_title": "Placement Prep - LeetCode Sync"
+  }
+}
