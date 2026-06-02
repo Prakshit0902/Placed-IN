@@ -12,3 +12,4 @@ __pycache__/
 staging/
 checkpoints/
 venv/
+.turbo/
