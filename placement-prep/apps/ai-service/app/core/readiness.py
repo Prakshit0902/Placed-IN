@@ -1,10 +1,25 @@
-from typing import Any
+"""
+readiness.py — Compute interview readiness score for a user against a company.
 
+Formula (fixed from original):
+    High-priority set H = top-40% of company pool by raw frequency (minimum 10 problems).
+    Per-topic readiness = 100 × (Σ F_q for solved q in H_t) / (Σ F_q for all q in H_t)
+    Overall readiness = Σ_t (W_t × Ready_t) / Σ_t W_t  where W_t = Σ F_q in H_t
+
+Key fix: readiness is based on SOLVED problems' frequency coverage — not CGS-gap math.
+This prevents ATTEMPTED problems from *reducing* readiness (they were getting S_q=1.40
+which boosted their CGS gap, dragging down "gap coverage" for attempted users unfairly).
+
+Additional improvements:
+- pain_points: top-5 attempted problems in H not yet solved (highest freq first)
+- preparation_tier: derived from overall readiness
+- regeneration_recommended: if any topic readiness jumped ≥ 15 points since last snapshot
+"""
+
+from typing import Any
 from app.core.recommendation.constants import TAG_TO_TOPIC
-from app.core.recommendation.pool import CompanyPool
 from app.core.recommendation.user_model import UserSkillModel
-from app.core.recommendation.scoring_v2 import compound_gap_score, _topic_for_problem
-from supabase import Client
+from app.core.logger import logger
 
 
 def _topic_for_problem(problem: dict[str, Any]) -> str | None:
@@ -14,62 +29,137 @@ def _topic_for_problem(problem: dict[str, Any]) -> str | None:
     return None
 
 
+def _readiness_tier(overall: float) -> str:
+    if overall >= 85:
+        return "Interview-Ready"
+    if overall >= 65:
+        return "Advanced"
+    if overall >= 35:
+        return "Developing"
+    return "Foundational"
+
+
 def compute_readiness(
     company: str,
     user: UserSkillModel,
     pool: list[dict[str, Any]],
+    previous_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """
+    Compute readiness score.
 
+    Args:
+        company:           company slug (for logging)
+        user:              loaded UserSkillModel
+        pool:              company question pool (enriched with 'problem' key)
+        previous_snapshot: previously stored readiness_score JSON (for regen detection)
+
+    Returns a dict with keys:
+        overall, by_topic, estimated_weeks_to_target,
+        preparation_tier, pain_points, regeneration_recommended
+    """
     if not pool:
-        return {
-            "overall": 0.0,
-            "estimated_weeks_to_target": 12,
-            "by_topic": {},
-        }
-        
-    # Sort pool by frequency descending
+        return _empty_readiness()
+
+    # ── Build high-priority set H: top-40% by raw frequency ──────────────────
     sorted_pool = sorted(pool, key=lambda x: float(x.get("frequency") or 0.0), reverse=True)
-    top_40_count = max(10, int(len(sorted_pool) * 0.4))
-    top_40 = sorted_pool[:top_40_count]
-    
-    max_freq = float(top_40[0].get("frequency") or 1.0) if top_40 else 1.0
-    if max_freq == 0.0: max_freq = 1.0
-    
-    empty_user = UserSkillModel(profile={}) # empty user for max_gap
-    
-    total_gap = 0.0
-    max_gap = 0.0
-    
-    topic_gaps: dict[str, float] = {}
-    topic_maxes: dict[str, float] = {}
+    top_n = max(10, int(len(sorted_pool) * 0.40))
+    H = sorted_pool[:top_n]
 
-    for cq in top_40:
-        actual_cgs = compound_gap_score(cq, user, max_freq)
-        max_cgs = compound_gap_score(cq, empty_user, max_freq)
-        
-        total_gap += actual_cgs
-        max_gap += max_cgs
-        
-        topic = _topic_for_problem(cq["problem"])
-        if topic:
-            topic_gaps[topic] = topic_gaps.get(topic, 0.0) + actual_cgs
-            topic_maxes[topic] = topic_maxes.get(topic, 0.0) + max_cgs
+    # ── Per-topic frequency sums ──────────────────────────────────────────────
+    topic_total_freq: dict[str, float] = {}
+    topic_solved_freq: dict[str, float] = {}
 
-    overall = max(0.0, 100.0 * (1.0 - total_gap / max_gap)) if max_gap > 0 else 0.0
-    overall = round(overall, 1)
+    pain_candidates: list[dict] = []  # problems in H that are ATTEMPTED but not SOLVED
 
+    for cq in H:
+        p = cq["problem"]
+        freq = float(cq.get("frequency") or 0.0)
+        pid = p["id"]
+        topic = _topic_for_problem(p)
+        if topic is None:
+            continue
+
+        topic_total_freq[topic] = topic_total_freq.get(topic, 0.0) + freq
+
+        status = user.problem_status.get(pid)
+        if status == "SOLVED":
+            topic_solved_freq[topic] = topic_solved_freq.get(topic, 0.0) + freq
+        elif status == "ATTEMPTED":
+            # Track high-priority attempted problems for pain_points
+            pain_candidates.append({
+                "id": pid,
+                "title": p.get("title", ""),
+                "slug": p.get("slug", ""),
+                "topic": topic,
+                "frequency": freq,
+                "difficulty": p.get("difficulty", "Medium"),
+            })
+
+    if not topic_total_freq:
+        return _empty_readiness()
+
+    # ── Per-topic readiness ───────────────────────────────────────────────────
     by_topic: dict[str, float] = {}
-    for topic, d_max in topic_maxes.items():
-        n_gap = topic_gaps.get(topic, 0.0)
-        t_readiness = max(0.0, 100.0 * (1.0 - n_gap / d_max)) if d_max > 0 else 0.0
-        by_topic[topic] = round(t_readiness, 1)
+    for topic, total_f in topic_total_freq.items():
+        solved_f = topic_solved_freq.get(topic, 0.0)
+        by_topic[topic] = round(100.0 * solved_f / total_f, 1) if total_f > 0 else 0.0
 
-    target = 85.0
-    gap = max(0.0, target - overall)
-    estimated_weeks = max(1, int(round(gap / 8))) if gap > 0 else 0
+    # ── Overall readiness (frequency-weighted across topics) ─────────────────
+    overall_num = sum(
+        topic_total_freq[t] * by_topic[t]
+        for t in by_topic
+    )
+    overall_den = sum(topic_total_freq.values())
+    overall = round(overall_num / overall_den, 1) if overall_den > 0 else 0.0
+
+    # ── Estimated weeks to 85% target ────────────────────────────────────────
+    gap = max(0.0, 85.0 - overall)
+    # 8 points per week is the plan's estimate; realistic for a focused user
+    estimated_weeks = max(1, round(gap / 8)) if gap > 0 else 0
+
+    # ── Pain points: top-5 ATTEMPTED problems in H, sorted by frequency ──────
+    pain_candidates.sort(key=lambda x: x["frequency"], reverse=True)
+    pain_points = pain_candidates[:5]
+
+    # ── Preparation tier ─────────────────────────────────────────────────────
+    preparation_tier = _readiness_tier(overall)
+
+    # ── Regeneration recommendation ──────────────────────────────────────────
+    regeneration_recommended = False
+    if previous_snapshot and previous_snapshot.get("by_topic"):
+        prev_by_topic = previous_snapshot["by_topic"]
+        for topic, new_score in by_topic.items():
+            old_score = prev_by_topic.get(topic, 0.0)
+            if new_score - old_score >= 15.0:
+                regeneration_recommended = True
+                logger.info(
+                    f"Regen recommended: topic '{topic}' readiness jumped "
+                    f"{old_score:.1f} → {new_score:.1f}"
+                )
+                break
+
+    logger.info(
+        f"Readiness for {company}: overall={overall}%, tier={preparation_tier}, "
+        f"estimated_weeks={estimated_weeks}, pain_points={len(pain_points)}"
+    )
 
     return {
         "overall": overall,
-        "estimated_weeks_to_target": estimated_weeks,
         "by_topic": by_topic,
+        "estimated_weeks_to_target": estimated_weeks,
+        "preparation_tier": preparation_tier,
+        "pain_points": pain_points,
+        "regeneration_recommended": regeneration_recommended,
+    }
+
+
+def _empty_readiness() -> dict[str, Any]:
+    return {
+        "overall": 0.0,
+        "by_topic": {},
+        "estimated_weeks_to_target": 12,
+        "preparation_tier": "Foundational",
+        "pain_points": [],
+        "regeneration_recommended": False,
     }
