@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
+import { ScrollProvider } from "@/components/ScrollProvider";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -31,7 +33,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
         suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col">{children}</body>
+        <body className="min-h-full flex flex-col">
+          <ScrollProvider>{children}</ScrollProvider>
+        </body>
       </html>
     </ThemeProvider>
   );
