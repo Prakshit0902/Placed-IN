@@ -30,10 +30,10 @@ export default function RootLayout({
     <ThemeProvider>
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} dark antialiased`}
         suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col">
+        <body className="min-h-screen flex flex-col">
           <ScrollProvider>{children}</ScrollProvider>
         </body>
       </html>
