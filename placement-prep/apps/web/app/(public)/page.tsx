@@ -38,24 +38,30 @@ function SplitText({ text, delayOffset = 0 }: { text: string; delayOffset?: numb
       {text.split(" ").map((word, wIdx) => {
         const wordChars = word.split("");
         return (
-          <span key={wIdx} className="inline-block whitespace-nowrap">
+          <span key={wIdx} className="inline-block" style={{ whiteSpace: "nowrap" }}>
             {wordChars.map((char, cIdx) => {
               const delay = delayOffset + globalCharIndex * 20;
               globalCharIndex++;
               return (
                 <span
                   key={cIdx}
-                  className="inline-block translate-y-2 opacity-0 animate-fade-in text-foreground"
+                  className="text-foreground"
                   style={{
-                    animationDelay: `${delay}ms`,
-                    animationFillMode: "forwards",
+                    display: "inline-block",
+                    opacity: 0,
+                    transform: "translateY(8px)",
+                    animation: `fade-in 0.5s ease-out forwards ${delay}ms`,
                   }}
                 >
                   {char}
                 </span>
               );
             })}
-            {wIdx < text.split(" ").length - 1 && <span className="inline-block">&nbsp;</span>}
+            {wIdx < text.split(" ").length - 1 && (
+              <span className="text-foreground" style={{ display: "inline-block" }}>
+                &nbsp;
+              </span>
+            )}
           </span>
         );
       })}
@@ -159,75 +165,12 @@ export default function LandingPage() {
   const pricingSectionRef = useRef<HTMLDivElement>(null);
   const faqSectionRef = useRef<HTMLDivElement>(null);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
   // States
   const [activeExplainTab, setActiveExplainTab] = useState<"analogy" | "dryrun" | "hints" | "complexity">("analogy");
   const [syncCount, setSyncCount] = useState(0);
   const [syncComplete, setSyncComplete] = useState(false);
   const [activeSprintDuration, setActiveSprintDuration] = useState<15 | 30 | 60>(30);
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("annual");
-
-  const syncProgressRef = useRef(0);
-
-  // Sync heatmap drawing helper
-  const drawGrid = (progress: number, currentTheme: string) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const cols = 52;
-    const rows = 7;
-    const cellSize = 10;
-    const gap = 3;
-
-    const dpr = window.devicePixelRatio || 1;
-    const width = cols * (cellSize + gap) - gap;
-    const height = rows * (cellSize + gap) - gap;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    ctx.scale(dpr, dpr);
-
-    ctx.clearRect(0, 0, width, height);
-
-    const isDark = currentTheme === "dark";
-    const baseColor = isDark ? "#1c1c1e" : "#e4e4e7";
-    
-    // Monochromatic shades of Zinc
-    const activeShades = isDark 
-      ? ["#27272a", "#3f3f46", "#71717a", "#a1a1aa", "#d4d4d8", "#e4e4e7", "#fafafa"]
-      : ["#e4e4e7", "#d4d4d8", "#a1a1aa", "#71717a", "#3f3f46", "#27272a", "#09090b"];
-
-    for (let c = 0; c < cols; c++) {
-      for (let r = 0; r < rows; r++) {
-        const x = c * (cellSize + gap);
-        const y = r * (cellSize + gap);
-
-        // Diagonal wave activation: row + column determines threshold
-        const threshold = (c / cols + r / rows) / 2;
-        const isActivated = progress > threshold;
-
-        if (isActivated) {
-          const shadeIndex = Math.floor(((c * 7 + r) % activeShades.length));
-          ctx.fillStyle = activeShades[shadeIndex];
-        } else {
-          ctx.fillStyle = baseColor;
-        }
-        
-        ctx.beginPath();
-        ctx.roundRect(x, y, cellSize, cellSize, 1.5);
-        ctx.fill();
-      }
-    }
-  };
-
-  // Redraw sync canvas on theme change
-  useEffect(() => {
-    drawGrid(syncProgressRef.current, theme);
-  }, [theme]);
 
   // Magnetic buttons
   const handleMagneticMove = (e: React.MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
@@ -268,8 +211,9 @@ export default function LandingPage() {
   };
 
   // GSAP animations Orchestration
+  // GSAP animations Orchestration
   useGSAP(() => {
-    // 1. MacBook Bento Preview (sticky pin Zoom & screen bloom)
+    // 1. MacBook Bento Preview (3D opening lid & interactive depth)
     gsap.timeline({
       scrollTrigger: {
         trigger: bentoSectionRef.current,
@@ -279,38 +223,58 @@ export default function LandingPage() {
         pin: true,
       }
     })
-    .fromTo(".macbook-frame", 
-      { scale: 0.65, rotateX: 12, transformPerspective: 1200 },
-      { scale: 1.05, rotateX: 0, ease: "none" }
+    .fromTo(".macbook-container-3d", 
+      { rotateX: 18, rotateY: -10, scale: 0.6 },
+      { rotateX: 0, rotateY: 0, scale: 1.02, ease: "none" }
     )
-    .fromTo(".macbook-screen-overlay",
-      { clipPath: "circle(0% at 50% 50%)" },
-      { clipPath: "circle(150% at 50% 50%)", ease: "none" },
+    .fromTo(".macbook-screen-lid",
+      { rotateX: -95 },
+      { rotateX: 0, ease: "none" },
       "<"
     )
     .fromTo(".macbook-screen-content",
-      { yPercent: 8 },
+      { yPercent: 12 },
       { yPercent: 0, ease: "none" },
       "<"
     )
     .fromTo(".macbook-inner-card",
-      { yPercent: 20 },
-      { yPercent: 0, ease: "none" },
+      { z: -85, opacity: 0 },
+      { z: 0, opacity: 1, stagger: 0.05, ease: "none" },
       "<"
     );
 
-    // 2. LeetCode Deep Sync wave reveal
-    gsap.to({ progress: 0 }, {
+    // 2. LeetCode Deep Sync wave reveal & 3D bar extrusion
+    const syncProgressObj = { progress: 0 };
+    gsap.to(syncProgressObj, {
       progress: 1,
       scrollTrigger: {
         trigger: syncSectionRef.current,
         start: "top 80%",
         end: "bottom 20%",
         scrub: true,
-        onUpdate: (self) => {
-          syncProgressRef.current = self.progress;
-          drawGrid(self.progress, theme);
+      },
+      onUpdate: () => {
+        setSyncCount(Math.floor(syncProgressObj.progress * 1284));
+        if (syncProgressObj.progress >= 0.9) {
+          setSyncComplete(true);
+        } else {
+          setSyncComplete(false);
         }
+
+        // Extrude blocks dynamically based on sync progress
+        const blocks = document.querySelectorAll(".heatmap-block-3d");
+        blocks.forEach((block: any, i) => {
+          const threshold = (i % 20) / 20;
+          if (syncProgressObj.progress > threshold) {
+            const h = (i * 17) % 5 === 0 ? 24 : (i * 11) % 3 === 0 ? 12 : 3;
+            const activeProg = Math.min(1, (syncProgressObj.progress - threshold) * 5);
+            block.style.transform = `translateZ(${h * activeProg}px)`;
+            block.style.opacity = "1";
+          } else {
+            block.style.transform = "translateZ(0px)";
+            block.style.opacity = "0.2";
+          }
+        });
       }
     });
 
@@ -346,61 +310,54 @@ export default function LandingPage() {
     }, "<");
 
     readinessTl.fromTo(".readiness-company-tag",
-      { scale: 0, opacity: 0, x: 0, y: 0 },
+      { scale: 0, opacity: 0, x: 0, y: 0, z: 0 },
       {
         scale: 1,
         opacity: 1,
         x: (i, el) => parseFloat(el.getAttribute("data-tx") || "0"),
         y: (i, el) => parseFloat(el.getAttribute("data-ty") || "0"),
+        z: 40,
         stagger: 0.05,
-        ease: "back.out(1.5)",
+        ease: "back.out(1.4)",
       },
       "0.3"
     );
 
     readinessTl.fromTo(".readiness-pulse-ring",
-      { scale: 0.6, opacity: 0 },
-      { scale: 1.4, opacity: 0.8, duration: 0.3, ease: "power1.out" },
-      "0.7"
+      { scale: 0.5, opacity: 0, z: -10 },
+      { scale: 1.3, opacity: 0.8, z: 15, duration: 0.4, ease: "power1.out" },
+      "0.6"
     )
     .to(".readiness-pulse-ring", {
       opacity: 0,
-      scale: 1.8,
+      scale: 1.6,
+      z: 30,
       duration: 0.2,
       ease: "power1.in"
     });
 
-    // 4. AI Copilot Drawer Materialization
-    const copilotTl = gsap.timeline({
-      scrollTrigger: {
-        trigger: assistantSectionRef.current,
-        start: "top 80%",
-        end: "bottom 20%",
-        scrub: true,
+    // 4. AI Copilot 3D Prism Workspace Rotation
+    const prismObj = { rotation: 0 };
+    gsap.fromTo(prismObj, 
+      { rotation: 0 },
+      {
+        rotation: -240,
+        scrollTrigger: {
+          trigger: assistantSectionRef.current,
+          start: "top 80%",
+          end: "bottom 20%",
+          scrub: true,
+        },
+        onUpdate: () => {
+          const el = document.querySelector(".prism-container-3d") as HTMLElement;
+          if (el) {
+            el.style.setProperty("--prism-rotation", `${prismObj.rotation}deg`);
+          }
+        }
       }
-    });
-
-    copilotTl.fromTo(".copilot-drawer",
-      { width: 0 },
-      { width: 340, ease: "power2.out" }
-    )
-    .fromTo(".copilot-editor-pane",
-      { filter: "brightness(1)" },
-      { filter: "brightness(0.65)", ease: "none" },
-      "<"
-    )
-    .fromTo(".copilot-msg",
-      { opacity: 0, filter: "blur(5px)", y: 10 },
-      { opacity: 1, filter: "blur(0)", y: 0, stagger: 0.2, ease: "power1.out" },
-      "0.2"
-    )
-    .fromTo(".copilot-code-line",
-      { opacity: 0.15 },
-      { opacity: 1, stagger: 0.1, ease: "none" },
-      "0.1"
     );
 
-    // 5. Semantic Filter Gravity Well
+    // 5. Semantic AI Filter 3D Vortex Orbit
     gsap.timeline({
       scrollTrigger: {
         trigger: semanticSectionRef.current,
@@ -414,6 +371,7 @@ export default function LandingPage() {
           tags.forEach((tag, idx) => {
             const dx = parseFloat(tag.getAttribute("data-dx") || "0");
             const dy = parseFloat(tag.getAttribute("data-dy") || "0");
+            const dz = parseFloat(tag.getAttribute("data-dz") || "0");
             const r = parseFloat(tag.getAttribute("data-r") || "30");
             const phase = parseFloat(tag.getAttribute("data-phase") || "0");
 
@@ -421,30 +379,35 @@ export default function LandingPage() {
             let scale = 1;
             let x = dx;
             let y = dy;
+            let z = dz;
             let blur = 0;
 
             if (p < 0.2) {
               opacity = p / 0.2;
+              z = dz + (1 - opacity) * 100;
             } else if (p < 0.6) {
               opacity = 1;
-              const angle = (p - 0.2) * Math.PI * 2 + (phase * Math.PI / 180);
+              const angle = (p - 0.2) * Math.PI * 2.5 + (phase * Math.PI / 180);
               x = dx + Math.cos(angle) * r;
               y = dy + Math.sin(angle) * r;
+              z = dz + Math.sin(angle * 1.5) * 30;
             } else if (p < 0.85) {
               const collapseProg = (p - 0.6) / 0.25;
               const eased = collapseProg * collapseProg * collapseProg;
-              const angle = 0.8 * Math.PI * 2 + (phase * Math.PI / 180);
+              const angle = 0.8 * Math.PI * 2.5 + (phase * Math.PI / 180);
               const orbitX = dx + Math.cos(angle) * r;
               const orbitY = dy + Math.sin(angle) * r;
+              const orbitZ = dz + Math.sin(angle * 1.5) * 30;
 
               x = orbitX * (1 - eased);
               y = orbitY * (1 - eased);
-              scale = 1 - eased * 0.4;
+              z = orbitZ * (1 - eased) - eased * 80;
+              scale = 1 - eased * 0.6;
               opacity = 1 - eased;
               blur = eased * 8;
             }
 
-            (tag as HTMLElement).style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${scale})`;
+            (tag as HTMLElement).style.transform = `translate(-50%, -50%) translate3d(${x}px, ${y}px, ${z}px) scale(${scale})`;
             (tag as HTMLElement).style.opacity = `${opacity}`;
             (tag as HTMLElement).style.filter = blur > 0.5 ? `blur(${blur}px)` : "none";
           });
@@ -455,8 +418,9 @@ export default function LandingPage() {
               input.value = "Hard dynamic programming questions asked in Google SWE interviews";
               const box = document.querySelector(".semantic-search-box") as HTMLElement;
               if (box) {
-                box.style.boxShadow = `0 0 16px 4px rgba(var(--foreground-rgb), 0.08)`;
+                box.style.boxShadow = `0 0 25px 4px rgba(var(--foreground-rgb), 0.12)`;
                 box.style.borderColor = "var(--foreground)";
+                box.style.transform = "translateZ(-20px) scale(1.03)";
               }
             } else {
               input.value = "";
@@ -464,6 +428,7 @@ export default function LandingPage() {
               if (box) {
                 box.style.boxShadow = "none";
                 box.style.borderColor = "var(--border)";
+                box.style.transform = "translateZ(-20px) scale(1)";
               }
             }
           }
@@ -471,52 +436,32 @@ export default function LandingPage() {
       }
     });
 
-    // 6. Placement Sprints 3D Timeline Ribbon (Pinning active segment)
-    const sprintTl = gsap.timeline({
-      scrollTrigger: {
-        trigger: sprintSectionRef.current,
-        start: "top top",
-        end: "bottom bottom",
-        scrub: true,
-        pin: true,
+    // 6. Placement Sprints 3D Timeline Rolodex Spin
+    const wheelObj = { rotation: 0 };
+    const cardCount = sprintSchedules[activeSprintDuration].length;
+    const finalRot = -((cardCount - 1) / cardCount) * 360;
+
+    gsap.fromTo(wheelObj,
+      { rotation: 0 },
+      {
+        rotation: finalRot,
+        scrollTrigger: {
+          trigger: sprintSectionRef.current,
+          start: "top top",
+          end: "bottom bottom",
+          scrub: true,
+          pin: true,
+        },
+        onUpdate: () => {
+          const el = document.querySelector(".rolodex-wheel-3d") as HTMLElement;
+          if (el) {
+            el.style.setProperty("--wheel-rotation", `${wheelObj.rotation}deg`);
+          }
+        }
       }
-    });
+    );
 
-    const cardElements = gsap.utils.toArray(".sprint-3d-card");
-    const totalCards = cardElements.length;
-
-    cardElements.forEach((card: any, idx: number) => {
-      const startAt = idx / totalCards;
-      const activeAt = (idx + 0.5) / totalCards;
-
-      gsap.set(card, {
-        transformPerspective: 1200,
-        transformStyle: "preserve-3d",
-        z: -idx * 250,
-        rotateY: 12,
-        opacity: idx === 0 ? 1 : 0.4 - (idx * 0.1)
-      });
-
-      sprintTl.to(card, {
-        z: 0,
-        rotateY: 0,
-        opacity: 1,
-        duration: 0.5,
-        ease: "power1.out"
-      }, startAt * 2);
-
-      if (idx < totalCards - 1) {
-        sprintTl.to(card, {
-          x: -400,
-          rotateY: -20,
-          opacity: 0,
-          duration: 0.5,
-          ease: "power1.in"
-        }, activeAt * 2);
-      }
-    });
-
-    // 7. Premium Pricing Monolith Rise
+    // 7. Premium Pricing Monolith Rise & Scan
     const pricingTl = gsap.timeline({
       scrollTrigger: {
         trigger: pricingSectionRef.current,
@@ -527,8 +472,8 @@ export default function LandingPage() {
     });
 
     pricingTl.fromTo(".pricing-monolith-card",
-      { y: 120 },
-      { y: 0, ease: "power2.out" }
+      { "--monolith-y-num": 120 },
+      { "--monolith-y-num": 0, ease: "power2.out" }
     )
     .fromTo(".pricing-standard-card",
       { filter: "grayscale(0) opacity(1)" },
@@ -537,11 +482,7 @@ export default function LandingPage() {
     )
     .fromTo(".pricing-laser-line",
       { top: "0%", opacity: 0 },
-      { top: "100%", opacity: 0.6, ease: "power1.inOut" }
-    )
-    .fromTo(".pricing-monolith-card",
-      { boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)" },
-      { boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)", ease: "power2.out" },
+      { top: "100%", opacity: 0.8, ease: "power1.inOut" },
       "<"
     );
 
@@ -678,7 +619,7 @@ export default function LandingPage() {
             <span className="font-extralight block">
               <SplitText text="Personalized study plans for" delayOffset={100} />
             </span>
-            <span className="font-bold gradient-text">
+            <span className="font-bold block text-foreground">
               <SplitText text="your dream tech offers" delayOffset={500} />
             </span>
           </h1>
@@ -726,94 +667,118 @@ export default function LandingPage() {
       {/* ─────────── BENTO PREVIEW (LAPTOP ZOOM & SCREEN BLOOM) ─────────── */}
       <section ref={bentoSectionRef} id="preview" className="relative h-[250vh] z-10 w-full">
         <div className="sticky top-0 h-screen w-full flex items-center justify-center overflow-hidden">
-          <div className="macbook-frame relative w-full max-w-4xl aspect-[16/10] bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl p-4 overflow-hidden flex flex-col justify-between">
-            {/* Bezel header */}
-            <div className="flex items-center gap-2 pb-2.5 border-b border-border/20">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500/20" />
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/20" />
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500/20" />
-              <span className="ml-4 text-[10px] text-muted font-mono tracking-widest uppercase">
-                PrepAssist — Study Planner Dashboard Preview
-              </span>
-            </div>
-
-            {/* Screen Content Window */}
-            <div className="relative w-full flex-1 bg-background rounded-lg overflow-hidden border border-zinc-800">
+          {/* 3D Macbook Viewport */}
+          <div className="macbook-viewport perspective-1200 preserve-3d w-full max-w-4xl aspect-[16/10] flex items-center justify-center relative">
+            <div className="macbook-container-3d preserve-3d w-[90%] aspect-[16/10] relative will-change-transform flex flex-col justify-end items-center transition-all duration-300 ease-out">
               
-              {/* MacBook Screen Content (Parallax layers inside screen) */}
-              <div className="macbook-screen-content absolute inset-0 grid md:grid-cols-3 gap-px bg-border/20">
-                {/* Schedule panel */}
-                <div className="md:col-span-2 p-8 space-y-6 bg-surface/40 flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold tracking-wide">
-                      Target: Google SWE L4
-                    </h3>
-                    <span className="text-[10px] text-muted font-mono uppercase tracking-widest">
-                      Week 1 / 6
-                    </span>
+              {/* Screen Lid (3D Plane) */}
+              <div 
+                className="macbook-screen-lid preserve-3d origin-bottom w-full aspect-[16/10] bg-zinc-950 rounded-t-xl border border-zinc-800 p-2 absolute bottom-[8%] left-0 shadow-2xl flex flex-col will-change-transform"
+                style={{ transform: "rotateX(-95deg)" }}
+              >
+                {/* Back Outer Shell */}
+                <div 
+                  className="absolute inset-0 bg-zinc-900 border border-zinc-800 rounded-t-xl backface-hidden" 
+                  style={{ transform: "translateZ(-1px)" }}
+                />
+                
+                {/* Screen bezel & content */}
+                <div className="relative w-full h-full bg-background rounded-md overflow-hidden border border-zinc-800 flex flex-col pt-3">
+                  {/* Top camera bezel */}
+                  <div className="w-24 h-4 bg-zinc-950 absolute top-0 left-1/2 -translate-x-1/2 rounded-b-md z-30 flex items-center justify-center">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500/40" />
                   </div>
 
-                  <div className="space-y-4">
-                    {[
-                      { day: "Day 1", topic: "Arrays & Hashing", done: true, badge: "Easy" },
-                      { day: "Day 2", topic: "Dynamic Programming", done: false, badge: "Hard" },
-                      { day: "Day 3", topic: "Graphs & BFS / DFS", done: false, badge: "Medium" },
-                    ].map((item) => (
-                      <div
-                        key={item.day}
-                        className="macbook-inner-card flex items-center gap-4 py-4 px-5 rounded-xl border border-border/30 bg-surface/60 hover:border-foreground/10 hover:bg-surface-elevated/40 transition-all duration-300 animate-fade-in"
-                      >
-                        {item.done ? (
-                          <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-                        ) : (
-                          <Circle className="h-4 w-4 text-muted/30 shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0 text-left">
-                          <span className="text-[9px] text-muted font-mono uppercase tracking-widest block mb-0.5">
-                            {item.day}
-                          </span>
-                          <p className={`text-sm ${item.done ? "line-through text-muted/70" : "text-foreground"}`}>
-                            {item.topic}
-                          </p>
-                        </div>
-                        <span
-                          className={`text-[9px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-wider ${
-                            item.badge === "Easy" ? "badge-easy" : item.badge === "Hard" ? "badge-hard" : "badge-medium"
-                          }`}
-                        >
-                          {item.badge}
+                  {/* MacBook Screen Content (Parallax layers inside screen) */}
+                  <div className="macbook-screen-content absolute inset-0 grid md:grid-cols-3 gap-px bg-border/20 pt-4">
+                    {/* Schedule panel */}
+                    <div className="md:col-span-2 p-8 space-y-6 bg-surface/40 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold tracking-wide">
+                          Target: Google SWE L4
+                        </h3>
+                        <span className="text-[10px] text-muted font-mono uppercase tracking-widest">
+                          Week 1 / 6
                         </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* AI chat panel */}
-                <div className="p-8 flex flex-col justify-between bg-surface/20 min-h-[300px]">
-                  <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted">
-                    <Sparkles className="h-4 w-4 text-foreground/60" />
-                    AI Assistant
-                  </div>
-
-                  <div className="space-y-4 text-left">
-                    <div className="flex gap-3 items-start">
-                      <MessageSquare className="h-4 w-4 mt-1 text-muted shrink-0" />
-                      <p className="text-[13px] text-muted leading-relaxed font-light">
-                        Based on your target role at Google, I recommend
-                        focusing on <span className="text-foreground font-medium">Dynamic Programming</span> today.
-                        35% of L4 interviews feature DP.
-                      </p>
+                      <div className="space-y-4">
+                        {[
+                          { day: "Day 1", topic: "Arrays & Hashing", done: true, badge: "Easy" },
+                          { day: "Day 2", topic: "Dynamic Programming", done: false, badge: "Hard" },
+                          { day: "Day 3", topic: "Graphs & BFS / DFS", done: false, badge: "Medium" },
+                        ].map((item, idx) => (
+                          <div
+                            key={item.day}
+                            className={`macbook-inner-card macbook-inner-card-${idx} flex items-center gap-4 py-4 px-5 rounded-xl border border-border/30 bg-surface/60 hover:border-foreground/10 hover:bg-surface-elevated/40 transition-all duration-300`}
+                            style={{ transform: "translateZ(-80px)" }}
+                          >
+                            {item.done ? (
+                              <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                            ) : (
+                              <Circle className="h-4 w-4 text-muted/30 shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0 text-left">
+                              <span className="text-[9px] text-muted font-mono uppercase tracking-widest block mb-0.5">
+                                {item.day}
+                              </span>
+                              <p className={`text-sm ${item.done ? "line-through text-muted/70" : "text-foreground"}`}>
+                                {item.topic}
+                              </p>
+                            </div>
+                            <span
+                              className={`text-[9px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-wider ${
+                                item.badge === "Easy" ? "badge-easy" : item.badge === "Hard" ? "badge-hard" : "badge-medium"
+                              }`}
+                            >
+                              {item.badge}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
-                    <button className="w-full text-center text-[12px] font-medium py-2.5 bg-foreground text-background hover:opacity-90 rounded-lg transition-opacity cursor-pointer">
-                      Load DP practice →
-                    </button>
+                    {/* AI chat panel */}
+                    <div className="p-8 flex flex-col justify-between bg-surface/20 min-h-[300px]">
+                      <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted">
+                        <Sparkles className="h-4 w-4 text-foreground/60" />
+                        AI Assistant
+                      </div>
+
+                      <div className="space-y-4 text-left">
+                        <div className="flex gap-3 items-start">
+                          <MessageSquare className="h-4 w-4 mt-1 text-muted shrink-0" />
+                          <p className="text-[13px] text-muted leading-relaxed font-light">
+                            Based on your target role at Google, I recommend
+                            focusing on <span className="text-foreground font-medium">Dynamic Programming</span> today.
+                            35% of L4 interviews feature DP.
+                          </p>
+                        </div>
+
+                        <button className="w-full text-center text-[12px] font-medium py-2.5 bg-foreground text-background hover:opacity-90 rounded-lg transition-opacity cursor-pointer">
+                          Load DP practice →
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Laser Screen Bloom overlay mask */}
-              <div className="macbook-screen-overlay absolute inset-0 bg-black pointer-events-none" />
+              {/* Keyboard Base (3D Plane) */}
+              <div 
+                className="macbook-keyboard-base preserve-3d origin-top w-full h-[15%] bg-zinc-900 border-x border-b border-zinc-800 rounded-b-xl shadow-xl absolute top-[92%] left-0 flex flex-col p-2"
+                style={{ transform: "rotateX(75deg)" }}
+              >
+                {/* Keycap layout simulation */}
+                <div className="w-full flex-1 grid grid-cols-12 gap-0.5 bg-zinc-950 p-1 rounded">
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} className="keycap-3d bg-zinc-800 border-b border-zinc-950 rounded-[1px] h-2 opacity-60" />
+                  ))}
+                </div>
+                {/* Trackpad */}
+                <div className="w-24 h-4 mx-auto border border-zinc-800/60 bg-zinc-950 rounded mt-1 opacity-70" />
+              </div>
+
             </div>
           </div>
         </div>
@@ -844,9 +809,28 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="md:col-span-7 flex flex-col items-center">
-            <ParallaxCard className="w-full" tilt={2}>
-              <div className="glass-card p-6 border border-border/40 space-y-5 text-left font-mono">
+          <div 
+            className="md:col-span-7 flex flex-col items-center perspective-1000 preserve-3d"
+            onMouseMove={(e) => {
+              const el = e.currentTarget;
+              const rect = el.getBoundingClientRect();
+              const x = (e.clientX - rect.left) / rect.width - 0.5;
+              const y = (e.clientY - rect.top) / rect.height - 0.5;
+              const grid = el.querySelector(".heatmap-3d-grid-wrap") as HTMLElement;
+              if (grid) {
+                grid.style.transform = `rotateX(${55 - y * 15}deg) rotateY(0deg) rotateZ(${-35 + x * 15}deg)`;
+              }
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget;
+              const grid = el.querySelector(".heatmap-3d-grid-wrap") as HTMLElement;
+              if (grid) {
+                grid.style.transform = `rotateX(55deg) rotateY(0deg) rotateZ(-35deg)`;
+              }
+            }}
+          >
+            <ParallaxCard className="w-full" tilt={1}>
+              <div className="glass-card p-6 border border-border/40 space-y-5 text-left font-mono preserve-3d">
                 <div className="flex items-center justify-between border-b border-border/20 pb-3">
                   <div className="flex items-center gap-2">
                     <span className={`w-2.5 h-2.5 rounded-full ${syncComplete ? "bg-success" : "bg-warning animate-pulse"}`} />
@@ -857,9 +841,48 @@ export default function LandingPage() {
                   <span className="text-[10px] text-muted font-mono">{syncCount} / 1284 solved</span>
                 </div>
 
-                {/* Heatmap Grid Canvas */}
-                <div className="flex justify-center py-2 bg-surface/10 rounded-xl border border-border/10 overflow-hidden">
-                  <canvas ref={canvasRef} className="opacity-90" />
+                {/* Isometric Heatmap 3D Terrain */}
+                <div className="flex justify-center items-center py-10 bg-surface/10 rounded-xl border border-border/10 overflow-visible relative min-h-[200px] preserve-3d">
+                  <div 
+                    className="heatmap-3d-grid-wrap preserve-3d grid grid-cols-20 gap-1.5 transition-transform duration-300 ease-out"
+                    style={{
+                      transform: "rotateX(55deg) rotateY(0deg) rotateZ(-35deg)",
+                    }}
+                  >
+                    {Array.from({ length: 20 * 7 }).map((_, i) => {
+                      const isActive = i % 7 === 0 || i % 5 === 0 || i % 3 === 0;
+                      let bgShade = "bg-zinc-800/20 dark:bg-zinc-800/5";
+                      if (isActive) {
+                        if (i % 7 === 0) bgShade = "bg-zinc-50 dark:bg-white border-zinc-200";
+                        else if (i % 5 === 0) bgShade = "bg-zinc-300 dark:bg-zinc-400 border-zinc-400";
+                        else bgShade = "bg-zinc-500 dark:bg-zinc-600 border-zinc-600";
+                      }
+                      
+                      return (
+                        <div 
+                          key={i} 
+                          className="heatmap-block-3d preserve-3d relative w-4.5 h-4.5 rounded-[1px] shadow-sm transition-all duration-150 will-change-transform"
+                          style={{ 
+                            transform: "translateZ(0px)",
+                            opacity: 0.2
+                          }}
+                        >
+                          {/* Top Face */}
+                          <div className={`absolute inset-0 border border-border/10 rounded-[1px] ${bgShade}`} />
+                          {/* Front Skirt Face */}
+                          <div 
+                            className="absolute inset-x-0 bottom-0 h-4 bg-zinc-800/80 dark:bg-zinc-950/80 rounded-b-[1px] backface-hidden"
+                            style={{ transform: "rotateX(-90deg)", transformOrigin: "bottom center" }}
+                          />
+                          {/* Side Skirt Face */}
+                          <div 
+                            className="absolute inset-y-0 right-0 w-4 bg-zinc-700/80 dark:bg-zinc-900/80 rounded-r-[1px] backface-hidden"
+                            style={{ transform: "rotateY(90deg)", transformOrigin: "right center" }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center text-xs text-muted pt-2 border-t border-border/10">
@@ -881,22 +904,58 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto grid md:grid-cols-12 gap-12 items-center">
           
           {/* Radar Speedometer layout */}
-          <div className="md:col-span-7 relative flex items-center justify-center h-[340px] overflow-visible">
-            
-            {/* Pulse expanding concentric ring */}
-            <div className="readiness-pulse-ring absolute rounded-full border border-foreground/30 pointer-events-none w-64 h-64 opacity-0" />
-            
-            <div className="relative z-10 bg-surface/40 p-8 border border-border/30 rounded-full flex items-center justify-center shadow-lg w-72 h-72">
-              <svg className="w-56 h-56 overflow-visible" viewBox="0 0 200 200">
-                {/* Arc Track */}
+          <div 
+            className="md:col-span-7 relative flex items-center justify-center h-[340px] perspective-1000 preserve-3d"
+            onMouseMove={(e) => {
+              const el = e.currentTarget;
+              const rect = el.getBoundingClientRect();
+              const x = (e.clientX - rect.left) / rect.width - 0.5;
+              const y = (e.clientY - rect.top) / rect.height - 0.5;
+              const card = el.querySelector(".gauge-3d-card") as HTMLElement;
+              if (card) {
+                card.style.transform = `rotateY(${x * 20}deg) rotateX(${-y * 20}deg)`;
+              }
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget;
+              const card = el.querySelector(".gauge-3d-card") as HTMLElement;
+              if (card) {
+                card.style.transform = `rotateY(0deg) rotateX(0deg)`;
+              }
+            }}
+          >
+            {/* The actual 3D Gauge Card */}
+            <div className="gauge-3d-card preserve-3d relative z-10 bg-surface/20 border border-border/20 p-8 rounded-full flex items-center justify-center shadow-2xl w-72 h-72 transition-transform duration-300 ease-out">
+              
+              {/* Concentric pings */}
+              <div className="readiness-pulse-ring absolute rounded-full border border-foreground/20 pointer-events-none w-64 h-64 opacity-0 scale-50" />
+              
+              {/* Back Plate Layer (translateZ(-25px)) */}
+              <div 
+                className="absolute inset-4 rounded-full border border-border/10 bg-surface-elevated/40 flex items-center justify-center transform preserve-3d"
+                style={{ transform: "translateZ(-25px)" }}
+              >
+                {/* Tech ticks */}
+                <div className="absolute inset-2 border-2 border-dashed border-border/10 rounded-full animate-[spin_60s_linear_infinite] opacity-30" />
+                <div className="absolute inset-6 border border-border/5 rounded-full" />
+              </div>
+
+              {/* Central Gauge Layer (translateZ(0px)) */}
+              <svg 
+                className="w-56 h-56 overflow-visible transform" 
+                viewBox="0 0 200 200"
+                style={{ transform: "translateZ(0px)" }}
+              >
+                {/* Scale Arc Background */}
                 <path
                   d="M 40 160 A 80 80 0 1 1 160 160"
                   fill="none"
                   stroke="var(--border)"
                   strokeWidth="8"
                   strokeLinecap="round"
+                  opacity="0.3"
                 />
-                {/* Arc Progress */}
+                {/* Scale Arc Active */}
                 <path
                   className="readiness-gauge-arc"
                   d="M 40 160 A 80 80 0 1 1 160 160"
@@ -907,36 +966,50 @@ export default function LandingPage() {
                   strokeDasharray="307"
                   strokeDashoffset="307"
                 />
-                {/* Needle */}
+                {/* 3D Extruded Needle */}
                 <g className="readiness-needle-group" style={{ transformOrigin: "100px 100px" }}>
                   <polygon
                     points="97,100 100,20 103,100"
                     fill="var(--foreground)"
+                    className="shadow"
                   />
-                  <circle cx="100" cy="100" r="6" fill="var(--foreground)" />
+                  <circle cx="100" cy="100" r="7" fill="var(--foreground)" />
+                  <circle cx="100" cy="100" r="3" fill="var(--background)" />
                 </g>
               </svg>
 
-              {/* Monospace score readout inside gauge */}
-              <div className="absolute text-center mt-6">
+              {/* Digital display */}
+              <div 
+                className="absolute text-center mt-6 transform"
+                style={{ transform: "translateZ(15px)" }}
+              >
                 <span id="readiness-score-val" className="text-4xl font-semibold tracking-tight text-foreground font-mono">0%</span>
                 <span className="text-[10px] text-muted font-mono uppercase tracking-widest block mt-1">Readiness</span>
               </div>
+
+              {/* Glass Glare Overlay (translateZ(30px)) */}
+              <div 
+                className="absolute inset-0 rounded-full border border-white/10 pointer-events-none transform"
+                style={{
+                  transform: "translateZ(30px)",
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 40%, transparent 60%)",
+                }}
+              />
             </div>
 
             {/* Radial Company Target tags */}
             {[
-              { label: "Google", angle: -30, tx: -70, ty: -100 },
-              { label: "Meta", angle: 45, tx: 100, ty: -40 },
-              { label: "Stripe", angle: -135, tx: -100, ty: 50 },
-              { label: "Uber", angle: 120, tx: 80, ty: 80 },
+              { label: "Google", angle: -30, tx: -90, ty: -110 },
+              { label: "Meta", angle: 45, tx: 110, ty: -60 },
+              { label: "Stripe", angle: -135, tx: -110, ty: 70 },
+              { label: "Uber", angle: 120, tx: 90, ty: 90 },
             ].map((tag, i) => (
               <span
                 key={i}
-                className="readiness-company-tag absolute px-3 py-1 border border-border bg-surface-elevated/95 rounded-full text-[10px] font-mono text-muted uppercase tracking-wider shadow opacity-0 scale-0"
+                className="readiness-company-tag absolute px-3 py-1 border border-border/30 bg-surface/90 rounded-full text-[10px] font-mono text-muted uppercase tracking-wider shadow-lg opacity-0 transform pointer-events-none"
                 data-tx={tag.tx}
                 data-ty={tag.ty}
-                style={{ left: "50%", top: "50%" }}
+                style={{ left: "50%", top: "50%", transform: "translate(-50%, -50%) translateZ(40px)" }}
               >
                 {tag.label}
               </span>
@@ -965,81 +1038,121 @@ export default function LandingPage() {
               <Cpu className="h-5 w-5" />
             </div>
             <h2 className="text-3xl font-extralight tracking-tight text-foreground">
-              AI Problem Assistant <span className="font-semibold block">IDE Materialization</span>
+              AI Problem Assistant <span className="font-semibold block">IDE Workspace Prism</span>
             </h2>
             <p className="text-muted leading-relaxed font-light text-sm sm:text-[15px]">
-              Open drawer interfaces to resolve difficult state transitions. Watch solutions materialize chronologically via line blur reveals alongside dynamic trace tabs.
+              Rotate your workspace container to resolve complex state transitions. Watch code, debugging traces, and optimization metrics spin into perspective seamlessly.
             </p>
           </div>
 
-          {/* Editor + Copilot Drawer */}
-          <div className="md:col-span-7 grid grid-cols-12 gap-3 relative h-[380px] w-full">
-            {/* Editor Pane (Left) */}
-            <div className="copilot-editor-pane col-span-7 bg-surface/50 border border-border rounded-2xl p-5 font-mono text-[11px] text-left overflow-y-auto shadow h-full">
-              <div className="flex items-center gap-1.5 pb-3 border-b border-border/10 mb-4">
-                <span className="w-2 h-2 rounded-full bg-border" />
-                <span className="text-[9px] text-muted">solution.py</span>
-              </div>
-              <pre className="text-muted space-y-2.5">
-                <code className="copilot-code-line block">
-                  <span className="text-foreground">def</span> <span className="text-muted">minDistance</span>(s1, s2):
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;m, n = len(s1), len(s2)
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;dp = [[0] * (n + 1) <span className="text-foreground">for</span> _ <span className="text-foreground">in</span> range(m + 1)]
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;<span className="text-foreground">for</span> i <span className="text-foreground">in</span> range(m + 1): dp[i][0] = i
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;<span className="text-foreground">for</span> j <span className="text-foreground">in</span> range(n + 1): dp[0][j] = j
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;<span className="text-foreground">for</span> i <span className="text-foreground">in</span> range(1, m + 1):
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-foreground">for</span> j <span className="text-foreground">in</span> range(1, n + 1):
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-foreground">if</span> s1[i-1] == s2[j-1]:
-                </code>
-                <code className="copilot-code-line block">
-                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dp[i][j] = dp[i-1][j-1]
-                </code>
-              </pre>
-            </div>
-
-            {/* Copilot Drawer (Right) */}
-            <div className="col-span-5 h-full relative overflow-hidden flex items-center justify-end">
-              <div
-                className="copilot-drawer bg-surface border border-border rounded-2xl absolute top-0 right-0 bottom-0 overflow-hidden text-left flex flex-col justify-between shadow-lg h-full"
-                style={{ width: "0px" }}
+          {/* 3D Prism Workspace (Right) */}
+          <div 
+            className="md:col-span-7 relative h-[400px] w-full flex items-center justify-center perspective-1200 preserve-3d"
+            onMouseMove={(e) => {
+              const el = e.currentTarget;
+              const rect = el.getBoundingClientRect();
+              const x = (e.clientX - rect.left) / rect.width - 0.5;
+              const y = (e.clientY - rect.top) / rect.height - 0.5;
+              const prism = el.querySelector(".prism-container-3d") as HTMLElement;
+              if (prism) {
+                prism.style.setProperty("--mx-tilt", `${x * 12}deg`);
+                prism.style.setProperty("--my-tilt", `${-y * 12}deg`);
+              }
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget;
+              const prism = el.querySelector(".prism-container-3d") as HTMLElement;
+              if (prism) {
+                prism.style.setProperty("--mx-tilt", "0deg");
+                prism.style.setProperty("--my-tilt", "0deg");
+              }
+            }}
+          >
+            {/* The rotating prism itself */}
+            <div 
+              className="prism-container-3d preserve-3d relative w-[340px] h-[340px] will-change-transform transition-all duration-300 ease-out"
+              style={{
+                transform: "rotateX(var(--my-tilt, 0deg)) rotateY(calc(var(--prism-rotation, 0deg) + var(--mx-tilt, 0deg)))",
+              }}
+            >
+              {/* Face A (0deg): Code Editor */}
+              <div 
+                className="cube-face preserve-3d bg-surface border border-border/40 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+                style={{
+                  transform: "rotateY(0deg) translateZ(105px)",
+                  backfaceVisibility: "hidden",
+                }}
               >
-                <div className="p-4 border-b border-border bg-surface/20 flex items-center justify-between">
-                  <span className="text-[10px] font-semibold font-mono uppercase tracking-wider text-foreground">AI Assistant</span>
+                <div className="flex items-center gap-1.5 pb-2 border-b border-border/10 mb-3 font-mono text-[10px]">
+                  <span className="w-2 h-2 rounded-full bg-border" />
+                  <span className="text-muted">solution.py</span>
+                </div>
+                <pre className="text-muted text-[10px] space-y-1 font-mono text-left overflow-hidden flex-1">
+                  <code className="copilot-code-line block"><span className="text-foreground">def</span> <span className="text-muted">minDistance</span>(s1, s2):</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;m, n = len(s1), len(s2)</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;dp = [[0] * (n + 1) <span className="text-foreground">for</span> _ <span className="text-foreground">in</span> range(m + 1)]</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;<span className="text-foreground">for</span> i <span className="text-foreground">in</span> range(m + 1): dp[i][0] = i</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;<span className="text-foreground">for</span> j <span className="text-foreground">in</span> range(n + 1): dp[0][j] = j</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;<span className="text-foreground">for</span> i <span className="text-foreground">in</span> range(1, m + 1):</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-foreground">for</span> j <span className="text-foreground">in</span> range(1, n + 1):</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-foreground">if</span> s1[i-1] == s2[j-1]:</code>
+                  <code className="copilot-code-line block">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dp[i][j] = dp[i-1][j-1]</code>
+                </pre>
+              </div>
+
+              {/* Face B (120deg): AI Copilot Explanation */}
+              <div 
+                className="cube-face preserve-3d bg-surface border border-border/40 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+                style={{
+                  transform: "rotateY(120deg) translateZ(105px)",
+                  backfaceVisibility: "hidden",
+                }}
+              >
+                <div className="flex items-center gap-1.5 pb-2 border-b border-border/10 mb-3 text-xs font-mono font-semibold uppercase tracking-wider text-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-foreground/75" />
+                  AI Debugger
+                </div>
+                <div className="space-y-3 flex-1 text-left font-sans text-xs">
+                  <div className="copilot-msg p-3 bg-surface-elevated/40 border border-border/20 rounded-xl">
+                    <span className="text-[8px] font-mono text-muted uppercase tracking-wider block mb-1">Trace analysis</span>
+                    <p className="text-[11px] text-foreground font-light leading-relaxed">
+                      Edit Distance matches cells. Deleting a character maps to <span className="font-mono text-foreground font-semibold">dp[i-1][j] + 1</span>.
+                    </p>
+                  </div>
+                  <div className="copilot-msg p-3 bg-surface-elevated/40 border border-border/20 rounded-xl font-mono">
+                    <span className="text-[8px] text-muted uppercase tracking-wider block mb-1">Complexity</span>
+                    <p className="text-[11px] text-foreground font-medium">Time: O(M * N) | Space: O(M * N)</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Face C (240deg): Performance Diagnostic Visual */}
+              <div 
+                className="cube-face preserve-3d bg-surface border border-border/40 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+                style={{
+                  transform: "rotateY(240deg) translateZ(105px)",
+                  backfaceVisibility: "hidden",
+                }}
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-border/10 mb-3 text-xs font-mono font-semibold uppercase tracking-wider text-foreground">
+                  <span>Trace Table</span>
                   <span className="w-1.5 h-1.5 rounded-full bg-success" />
                 </div>
                 
-                <div className="p-4 flex-1 space-y-4 overflow-y-auto font-sans">
-                  <div className="copilot-msg p-3 bg-surface-elevated/30 border border-border/30 rounded-xl">
-                    <span className="text-[8px] font-mono text-muted uppercase tracking-wider block mb-1">Response</span>
-                    <p className="text-[11px] text-foreground leading-normal font-light">
-                      Analyzing Edit Distance matrix. Deleting a character reduces dimensions by <span className="font-semibold text-foreground font-mono">dp[i-1][j] + 1</span>.
-                    </p>
+                <div className="flex-1 flex flex-col justify-center space-y-2 text-left font-mono text-[9px] text-muted">
+                  <div className="grid grid-cols-5 gap-1 text-center font-bold text-foreground/60 border-b border-border/10 pb-1">
+                    <span>dp</span><span>""</span><span>"c"</span><span>"a"</span><span>"t"</span>
                   </div>
-                  <div className="copilot-msg p-3 bg-surface-elevated/30 border border-border/30 rounded-xl">
-                    <span className="text-[8px] font-mono text-muted uppercase tracking-wider block mb-1">Complexity</span>
-                    <p className="text-[11px] text-foreground leading-normal font-mono">
-                      Time: O(M * N) | Space: O(M * N)
-                    </p>
+                  <div className="grid grid-cols-5 gap-1 text-center">
+                    <span className="font-bold text-foreground/60">""</span><span className="text-success">0</span><span>1</span><span>2</span><span>3</span>
                   </div>
-                  <div className="copilot-msg p-2 bg-surface-elevated/20 border border-border/30 rounded-lg text-center mt-4">
-                    <p className="text-[10px] text-foreground font-mono">
-                      Resolving trace table... <span className="animate-[blink_0.53s_infinite] font-bold">|</span>
-                    </p>
+                  <div className="grid grid-cols-5 gap-1 text-center">
+                    <span className="font-bold text-foreground/60">"c"</span><span>1</span><span className="text-success">0</span><span>1</span><span>2</span>
                   </div>
+                  <div className="grid grid-cols-5 gap-1 text-center animate-pulse">
+                    <span className="font-bold text-foreground/60">"o"</span><span>2</span><span>1</span><span className="text-warning font-bold">1</span><span>2</span>
+                  </div>
+                  <p className="text-[9px] text-center text-muted/80 pt-2 font-sans font-light">Dynamic matrix calculation resolved successfully.</p>
                 </div>
               </div>
             </div>
@@ -1051,33 +1164,72 @@ export default function LandingPage() {
       <section ref={semanticSectionRef} className="relative z-10 px-6 py-28 bg-surface/5 scroll-reveal-container">
         <div className="max-w-5xl mx-auto grid md:grid-cols-12 gap-12 items-center">
           
-          {/* Orbital Gravity Well display */}
-          <div className="md:col-span-7 order-2 md:order-1 relative flex items-center justify-center h-[300px]">
-            <div className="relative w-full max-w-sm">
-              <div className="semantic-search-box p-3 bg-surface border border-border rounded-xl flex items-center z-10 relative transition-all duration-300">
+          {/* Orbital Gravity Vortex display */}
+          <div 
+            className="md:col-span-7 order-2 md:order-1 relative flex items-center justify-center h-[320px] perspective-1000 preserve-3d"
+            onMouseMove={(e) => {
+              const el = e.currentTarget;
+              const rect = el.getBoundingClientRect();
+              const x = (e.clientX - rect.left) / rect.width - 0.5;
+              const y = (e.clientY - rect.top) / rect.height - 0.5;
+              const vortex = el.querySelector(".vortex-wrap-3d") as HTMLElement;
+              if (vortex) {
+                vortex.style.transform = `rotateY(${x * 25}deg) rotateX(${-y * 25}deg)`;
+              }
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget;
+              const vortex = el.querySelector(".vortex-wrap-3d") as HTMLElement;
+              if (vortex) {
+                vortex.style.transform = `rotateY(0deg) rotateX(0deg)`;
+              }
+            }}
+          >
+            <div className="vortex-wrap-3d preserve-3d relative w-full max-w-sm h-full flex items-center justify-center transition-transform duration-300 ease-out">
+              {/* 3D Funnel rings background */}
+              <div className="absolute inset-0 preserve-3d pointer-events-none flex items-center justify-center">
+                {[40, 80, 120, 160, 200].map((radius, idx) => (
+                  <div
+                    key={idx}
+                    className="absolute border border-dashed border-foreground/15 rounded-full"
+                    style={{
+                      width: `${radius * 2}px`,
+                      height: `${radius * 2}px`,
+                      transform: `translateZ(${-idx * 35}px)`,
+                      opacity: 1 - idx * 0.18,
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div 
+                className="semantic-search-box p-3 bg-surface/90 border border-border rounded-xl flex items-center z-10 relative transition-all duration-300 w-full transform shadow-2xl"
+                style={{ transform: "translateZ(-20px)" }}
+              >
                 <Search className="h-4 w-4 text-muted ml-2" />
                 <input
                   type="text"
                   disabled
-                  className="semantic-search-input bg-transparent text-xs font-light text-foreground flex-1 ml-2 border-0 outline-0 outline-none focus:outline-none"
+                  className="semantic-search-input bg-transparent text-xs font-light text-foreground flex-1 ml-2 border-0 outline-none"
                   value=""
                 />
               </div>
 
-              {/* Outer floating orbital tags */}
-              <div className="absolute inset-0 pointer-events-none overflow-visible">
+              {/* Outer floating orbital tags in 3D */}
+              <div className="absolute inset-0 pointer-events-none overflow-visible preserve-3d">
                 {[
-                  { text: "Google Target", dx: -110, dy: -60, r: 35 },
-                  { text: "Dynamic Programming", dx: 110, dy: -50, r: 40 },
-                  { text: "Hard Difficulty", dx: -120, dy: 50, r: 30 },
-                  { text: "Graph Search", dx: 120, dy: 60, r: 45 },
-                  { text: "Staggered Orbit", dx: -20, dy: -90, r: 35 },
+                  { text: "Google Target", dx: -100, dy: -60, dz: 80, r: 40 },
+                  { text: "Dynamic Programming", dx: 110, dy: -50, dz: -40, r: 50 },
+                  { text: "Hard Difficulty", dx: -110, dy: 60, dz: 60, r: 35 },
+                  { text: "Graph Search", dx: 110, dy: 50, dz: -60, r: 45 },
+                  { text: "Staggered Orbit", dx: -10, dy: -80, dz: 20, r: 40 },
                 ].map((tag, idx) => (
                   <span
                     key={idx}
-                    className="semantic-floating-tag absolute px-3 py-1 rounded-full border border-border bg-surface-elevated/95 text-[9px] font-mono text-muted whitespace-nowrap shadow-sm opacity-0 scale-0"
+                    className="semantic-floating-tag absolute px-3 py-1 rounded-full border border-border/30 bg-surface/90 text-[9px] font-mono text-muted whitespace-nowrap shadow-xl opacity-0 preserve-3d"
                     data-dx={tag.dx}
                     data-dy={tag.dy}
+                    data-dz={tag.dz}
                     data-r={tag.r}
                     data-phase={idx * 72}
                     style={{
@@ -1097,10 +1249,10 @@ export default function LandingPage() {
               <Search className="h-5 w-5" />
             </div>
             <h2 className="text-3xl font-extralight tracking-tight text-foreground">
-              Semantic AI Filter <span className="font-semibold block">Gravity Well Collapse</span>
+              Semantic AI Filter <span className="font-semibold block">Vortex Gravity Well</span>
             </h2>
             <p className="text-muted leading-relaxed font-light text-sm sm:text-[15px]">
-              Type query strings in conversational English. Floating keyword tags orbit your search container before collapsing inside a motion-blur gravity well to trigger search parameters.
+              Type queries in conversational English. Floating target tags spin in 3D orbit before collapsing directly inside the input well to resolve search criteria.
             </p>
           </div>
         </div>
@@ -1116,7 +1268,7 @@ export default function LandingPage() {
                 <Calendar className="h-5 w-5" />
               </div>
               <h2 className="text-3xl font-extralight tracking-tight text-foreground">
-                Placement Sprints <span className="font-semibold block">3D Timeline Ribbon</span>
+                Placement Sprints <span className="font-semibold block">3D Timeline Rolodex</span>
               </h2>
               <p className="text-muted leading-relaxed font-light text-sm">
                 Select your timeline speed. Watch target phase cards deal forward along the Z-axis, wiping text reveals cleanly into the front viewport.
@@ -1139,31 +1291,62 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* 3D Timeline ribbon track */}
+            {/* 3D Cylindrical Rolodex Wheel */}
             <div 
-              className="md:col-span-7 w-full h-[360px] relative flex items-center justify-center"
-              style={{ perspective: "1200px", transformStyle: "preserve-3d" }}
+              className="md:col-span-7 w-full h-[400px] relative flex items-center justify-center perspective-1200 preserve-3d"
+              onMouseMove={(e) => {
+                const el = e.currentTarget;
+                const rect = el.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / rect.width - 0.5;
+                const y = (e.clientY - rect.top) / rect.height - 0.5;
+                const wheel = el.querySelector(".rolodex-wheel-3d") as HTMLElement;
+                if (wheel) {
+                  wheel.style.setProperty("--mx-tilt", `${x * 15}deg`);
+                  wheel.style.setProperty("--my-tilt", `${-y * 15}deg`);
+                }
+              }}
+              onMouseLeave={(e) => {
+                const el = e.currentTarget;
+                const wheel = el.querySelector(".rolodex-wheel-3d") as HTMLElement;
+                if (wheel) {
+                  wheel.style.setProperty("--mx-tilt", "0deg");
+                  wheel.style.setProperty("--my-tilt", "0deg");
+                }
+              }}
             >
-              {sprintSchedules[activeSprintDuration].map((card, idx) => (
-                <div
-                  key={idx}
-                  className="sprint-3d-card absolute w-[340px] p-6 bg-surface/90 border border-border rounded-2xl shadow-xl flex flex-col justify-between h-[210px] will-change-transform"
-                  style={{
-                    zIndex: 10 - idx
-                  }}
-                >
-                  <div className="text-left">
-                    <span className="text-[9px] text-muted font-mono uppercase tracking-widest block mb-2">{card.week}</span>
-                    <h4 className="text-sm font-semibold text-foreground leading-normal">
-                      {card.topic}
-                    </h4>
-                  </div>
-                  <div className="flex justify-between items-center pt-3 border-t border-border/20">
-                    <span className="text-xs text-muted font-mono">{card.count} problems</span>
-                    <span className="text-[9px] px-2 py-0.5 rounded-full border border-success/40 bg-success/5 text-success uppercase tracking-wider font-mono">Curated</span>
-                  </div>
-                </div>
-              ))}
+              <div 
+                className="rolodex-wheel-3d preserve-3d relative w-[340px] h-[220px] transition-transform duration-300 ease-out"
+                style={{
+                  transform: "rotateX(var(--my-tilt, 0deg)) rotateY(calc(var(--wheel-rotation, 0deg) + var(--mx-tilt, 0deg)))",
+                }}
+              >
+                {sprintSchedules[activeSprintDuration].map((card, idx) => {
+                  const total = sprintSchedules[activeSprintDuration].length;
+                  const angle = (idx / total) * 360;
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className="sprint-rolodex-card absolute inset-0 bg-surface border border-border rounded-2xl shadow-xl flex flex-col justify-between p-6 backface-hidden preserve-3d"
+                      style={{
+                        transform: `rotateY(${angle}deg) translateZ(280px)`,
+                        backfaceVisibility: "hidden",
+                      }}
+                    >
+                      <div className="text-left">
+                        <span className="text-[9px] text-muted font-mono uppercase tracking-widest block mb-2">{card.week}</span>
+                        <h4 className="text-sm font-semibold text-foreground leading-normal">
+                          {card.topic}
+                        </h4>
+                      </div>
+                      <div className="flex justify-between items-center pt-3 border-t border-border/20">
+                        <span className="text-xs text-muted font-mono">{card.count} problems</span>
+                        <span className="text-[9px] px-2 py-0.5 rounded-full border border-success/40 bg-success/5 text-success uppercase tracking-wider font-mono">Curated</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
           </div>
@@ -1228,40 +1411,79 @@ export default function LandingPage() {
               </button>
             </div>
 
-            {/* Premium pricing card (Monolith) */}
-            <div className="pricing-monolith-container relative rounded-3xl overflow-hidden shadow-2xl">
+            {/* Premium pricing card (3D Monolith) */}
+            <div className="pricing-monolith-container relative rounded-3xl overflow-visible perspective-1000 preserve-3d">
               <div 
-                className="pricing-monolith-card p-8 bg-surface border border-border rounded-3xl flex flex-col justify-between h-full relative will-change-transform"
+                className="pricing-monolith-card preserve-3d bg-surface border border-border/45 rounded-3xl h-full relative will-change-transform shadow-2xl transition-transform duration-300 ease-out"
+                onMouseMove={(e) => {
+                  const el = e.currentTarget;
+                  const rect = el.getBoundingClientRect();
+                  const x = (e.clientX - rect.left) / rect.width - 0.5;
+                  const y = (e.clientY - rect.top) / rect.height - 0.5;
+                  el.style.transform = `rotateY(${x * 16}deg) rotateX(${-y * 16}deg) translate3d(0, calc(var(--monolith-y-num, 120) * 1px), 0)`;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget;
+                  el.style.transform = `rotateY(0deg) rotateX(0deg) translate3d(0, calc(var(--monolith-y-num, 120) * 1px), 0)`;
+                }}
+                style={{
+                  transform: "translate3d(0, calc(var(--monolith-y-num, 120) * 1px), 0)",
+                }}
               >
-                {/* Scanner sweep beam line */}
-                <div className="pricing-laser-line absolute left-0 right-0 h-px bg-foreground opacity-0 pointer-events-none" />
+                {/* 3D Extruded sides */}
+                <div 
+                  className="absolute w-[20px] top-[15px] bottom-[15px] -left-[10px] bg-zinc-800 border-l border-zinc-700/30 backface-hidden rounded-l" 
+                  style={{ transformOrigin: "center left", transform: "rotateY(-90deg)" }}
+                />
+                <div 
+                  className="absolute w-[20px] top-[15px] bottom-[15px] -right-[10px] bg-zinc-850 border-r border-zinc-800/30 backface-hidden rounded-r"
+                  style={{ transformOrigin: "center right", transform: "rotateY(90deg)" }}
+                />
 
-                <div className="space-y-6 text-left">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-xs font-semibold text-foreground font-mono uppercase tracking-widest">Premium</h3>
-                      <div className="mt-4 flex items-baseline gap-1">
-                        <span className="text-4xl font-bold text-foreground">
-                          ${billingPeriod === "annual" ? "8" : "12"}
-                        </span>
-                        <span className="text-xs text-muted">/month</span>
+                {/* Scanner sweep beam line */}
+                <div 
+                  className="pricing-laser-line absolute left-0 right-0 h-0.5 opacity-0 pointer-events-none transform" 
+                  style={{ 
+                    transform: "translateZ(1px)",
+                    background: "linear-gradient(90deg, transparent, rgba(var(--foreground-rgb), 0.25) 50%, transparent)" 
+                  }}
+                />
+                
+                {/* Metal shimmer overlay */}
+                <div className="absolute inset-0 reflection-sweep rounded-3xl" />
+
+                {/* Inner Content (on the front face translateZ(10px)) */}
+                <div 
+                  className="p-8 flex flex-col justify-between h-full relative transform preserve-3d"
+                  style={{ transform: "translateZ(10px)" }}
+                >
+                  <div className="space-y-6 text-left">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-xs font-semibold text-foreground font-mono uppercase tracking-widest">Premium</h3>
+                        <div className="mt-4 flex items-baseline gap-1">
+                          <span className="text-4xl font-bold text-foreground">
+                            ${billingPeriod === "annual" ? "8" : "12"}
+                          </span>
+                          <span className="text-xs text-muted">/month</span>
+                        </div>
+                        <p className="text-xs text-muted font-light mt-3">Full access to dynamic dashboard modules and co-piloting.</p>
                       </div>
-                      <p className="text-xs text-muted font-light mt-3">Full access to dynamic dashboard modules and co-piloting.</p>
+                      <span className="px-2 py-0.5 border border-foreground/30 text-foreground text-[8px] rounded-full uppercase tracking-wider font-mono">Popular</span>
                     </div>
-                    <span className="px-2 py-0.5 border border-foreground/30 text-foreground text-[8px] rounded-full uppercase tracking-wider font-mono">Popular</span>
+
+                    <ul className="space-y-3 font-mono text-[10px] text-foreground/80 border-t border-border/15 pt-4">
+                      <li className="flex items-center gap-2">• Automatic Deep Sync</li>
+                      <li className="flex items-center gap-2">• Concentric Speedometer Readiness</li>
+                      <li className="flex items-center gap-2">• 3D Timeline Ribbon Sprints</li>
+                      <li className="flex items-center gap-2">• AI Filter Gravity Well Search</li>
+                    </ul>
                   </div>
 
-                  <ul className="space-y-3 font-mono text-[10px] text-foreground/80 border-t border-border/15 pt-4">
-                    <li className="flex items-center gap-2">• Automatic Deep Sync</li>
-                    <li className="flex items-center gap-2">• Concentric Speedometer Readiness</li>
-                    <li className="flex items-center gap-2">• 3D Timeline Ribbon Sprints</li>
-                    <li className="flex items-center gap-2">• AI Filter Gravity Well Search</li>
-                  </ul>
+                  <button className="w-full text-center text-xs py-3 bg-foreground text-background rounded-xl font-semibold hover:opacity-90 mt-8 transition-opacity">
+                    Upgrade Plan
+                  </button>
                 </div>
-
-                <button className="w-full text-center text-xs py-3 bg-foreground text-background rounded-xl font-semibold hover:opacity-90 mt-8 transition-opacity">
-                  Upgrade Plan
-                </button>
               </div>
             </div>
           </div>

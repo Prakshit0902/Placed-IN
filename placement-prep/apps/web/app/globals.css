@@ -311,3 +311,94 @@ body {
               filter 0.15s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, opacity, filter;
 }
+
+/* ─── Premium 3D Transforms & Perspective Helpers ─── */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.perspective-1200 {
+  perspective: 1200px;
+}
+
+.perspective-2000 {
+  perspective: 2000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* 3D Cube/Block Prisms for Heatmap Terrain & Pricing Monolith */
+.cube-container {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.cube-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Monochromatic metallic reflections */
+.metallic-mesh-dark {
+  background: linear-gradient(135deg, #1c1c1e 0%, #101012 50%, #18181b 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.metallic-mesh-light {
+  background: linear-gradient(135deg, #f4f4f5 0%, #e4e4e7 50%, #d4d4d8 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8), 0 20px 40px rgba(0, 0, 0, 0.08);
+}
+
+/* Shiny reflection overlays */
+.reflection-sweep {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 55%, transparent 70%);
+  background-size: 200% 200%;
+  pointer-events: none;
+}
+:root:not(.dark) .reflection-sweep {
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.4) 45%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0.4) 55%, transparent 70%);
+}
+
+/* Glass panel glow */
+.glass-glow {
+  box-shadow: 0 0 40px rgba(var(--foreground-rgb), 0.03), inset 0 0 0 1px rgba(var(--foreground-rgb), 0.05);
+}
+
+/* 3D Keyboard caps helper */
+.keycap-3d {
+  transform-style: preserve-3d;
+  box-shadow: 0 2px 0 #18181b, 0 3px 4px rgba(0,0,0,0.5);
+  transition: transform 0.1s;
+}
+:root:not(.dark) .keycap-3d {
+  box-shadow: 0 2px 0 #d4d4d8, 0 3px 4px rgba(0,0,0,0.1);
+}
+.keycap-3d:active {
+  transform: translateZ(-1px);
+  box-shadow: 0 1px 0 #18181b, 0 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Laser sweep animation overlay */
+@keyframes laser-sweep {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+.laser-beam-active {
+  animation: laser-sweep 4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
