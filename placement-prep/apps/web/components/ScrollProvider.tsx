@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import Lenis from "lenis";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -11,7 +11,7 @@ gsap.registerPlugin(ScrollTrigger);
 const ScrollContext = createContext<Lenis | null>(null);
 
 export function ScrollProvider({ children }: { children: ReactNode }) {
-  const lenisRef = useRef<Lenis | null>(null);
+  const [lenis, setLenis] = useState<Lenis | null>(null);
 
   useEffect(() => {
     // Check if reduced motion is preferred
@@ -21,7 +21,7 @@ export function ScrollProvider({ children }: { children: ReactNode }) {
     }
 
     // Initialize Lenis
-    const lenis = new Lenis({
+    const lenisInstance = new Lenis({
       duration: 1.1,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // smooth exponential decelerate
       orientation: "vertical",
@@ -31,16 +31,16 @@ export function ScrollProvider({ children }: { children: ReactNode }) {
       touchMultiplier: 1.2,
     });
 
-    lenisRef.current = lenis;
+    setLenis(lenisInstance);
 
     // Connect Lenis scroll events to GSAP ScrollTrigger updates
-    lenis.on("scroll", () => {
+    lenisInstance.on("scroll", () => {
       ScrollTrigger.update();
     });
 
     // Synchronize GSAP ticker loop to Lenis RAF loop
     const updateGsap = (time: number) => {
-      lenis.raf(time * 1000); // Lenis expects milliseconds
+      lenisInstance.raf(time * 1000); // Lenis expects milliseconds
     };
     gsap.ticker.add(updateGsap);
 
@@ -51,14 +51,14 @@ export function ScrollProvider({ children }: { children: ReactNode }) {
     ScrollTrigger.refresh();
 
     return () => {
-      lenis.destroy();
+      lenisInstance.destroy();
       gsap.ticker.remove(updateGsap);
-      lenisRef.current = null;
+      setLenis(null);
     };
   }, []);
 
   return (
-    <ScrollContext.Provider value={lenisRef.current}>
+    <ScrollContext.Provider value={lenis}>
       {children}
     </ScrollContext.Provider>
   );
