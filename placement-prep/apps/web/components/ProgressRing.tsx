@@ -13,41 +13,48 @@ export function ProgressRing({ completed, total, title }: ProgressRingProps) {
   const remaining = total - completed;
 
   const data = [
-    { name: "Completed", value: completed, color: "#6366f1" },
-    { name: "Remaining", value: remaining > 0 ? remaining : 0, color: "rgba(30, 41, 59, 0.5)" }, // subtle border color
+    { name: "Completed", value: completed, color: "var(--foreground)" },
+    { name: "Remaining", value: remaining > 0 ? remaining : 0, color: "var(--border)" },
   ];
 
   return (
-    <div className="glass-card p-6 flex flex-col items-center justify-center relative">
-      <h3 className="font-semibold text-sm mb-4 absolute top-4 left-4">{title}</h3>
-      <div className="h-40 w-40 mt-6 relative">
+    <div className="glass-card p-6 flex flex-col items-center justify-center relative border border-border/50 hover-glow transition-all duration-300">
+      <h3 className="font-semibold text-xs uppercase tracking-widest text-muted absolute top-4 left-4">
+        {title}
+      </h3>
+      <div className="h-40 w-40 mt-6 relative select-none">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={55}
-              outerRadius={70}
+              innerRadius={52}
+              outerRadius={65}
               startAngle={90}
               endAngle={-270}
               dataKey="value"
               stroke="none"
-              cornerRadius={8}
+              cornerRadius={4}
             >
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip 
-              contentStyle={{ backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
-              itemStyle={{ color: "#e8ecf4" }}
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "var(--glass-bg)",
+                border: "1px solid var(--glass-border)",
+                borderRadius: "12px",
+                backdropFilter: "blur(12px)",
+              }}
+              itemStyle={{ color: "var(--foreground)", fontSize: "11px", fontFamily: "var(--font-geist-mono)" }}
             />
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-2xl font-bold">{percentage}%</span>
-          <span className="text-xs text-muted">{completed}/{total}</span>
+          <span className="text-2xl font-bold font-mono leading-none mb-1">{percentage}%</span>
+          <span className="text-[10px] text-muted font-mono leading-none">{completed}/{total}</span>
         </div>
       </div>
     </div>
