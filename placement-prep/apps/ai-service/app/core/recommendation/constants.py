@@ -35,6 +35,25 @@ for topic, tags in TOPIC_TO_TAGS.items():
     for tag in tags:
         TAG_TO_TOPIC[tag] = topic
 
+CF_TO_LC_TOPIC_MAP = {
+    "dp": "dynamic-programming",
+    "graphs": "graphs",
+    "shortest paths": "graphs",
+    "dfs and similar": "graphs",
+    "trees": "trees",
+    "binary search": "arrays",
+    "data structures": "arrays",
+    "two pointers": "arrays",
+    "math": "math",
+    "number theory": "math",
+    "combinatorics": "math",
+    "geometry": "math",
+    "greedy": "greedy",
+    "string suffix structures": "strings",
+    "strings": "strings",
+    "bitmasks": "bit-manipulation",
+}
+
 DURATION_CONFIG = {
     30: {
         "total_weeks": 5,

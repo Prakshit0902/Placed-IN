@@ -14,7 +14,7 @@ import {
   CheckCircle2,
   ArrowRight,
 } from "lucide-react";
-import { getStreak, getMySheets, getMe } from "@/lib/api";
+import { getStreak, getMySheets, getMe, getDashboardStats } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
 import {
   Radar,
@@ -23,6 +23,7 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   ResponsiveContainer,
+  Tooltip as RechartsTooltip,
 } from "recharts";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -33,56 +34,7 @@ if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
 }
 
-// ─── HEATMAP DATA GENERATOR (deterministic last 182 days / 6 months) ───
-const generateHeatmapData = (totalSolved: number) => {
-  const data = [];
-  const today = new Date("2026-06-08"); // Static anchor matching context date
-  for (let i = 181; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    const dayOfWeek = date.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    
-    // Seed solves deterministically based on date digits
-    const seed = (date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate()) % 100;
-    let value = 0;
-    
-    if (totalSolved > 0) {
-      if (seed % 7 === 0) value = 0;
-      else if (seed % 5 === 0) value = isWeekend ? 1 : 2;
-      else if (seed % 3 === 0) value = isWeekend ? 0 : 4;
-      else if (seed % 11 === 0) value = 6;
-      else value = 1;
-    } else {
-      value = 0; // Empty profile solves nothing
-    }
 
-    data.push({
-      date: date.toISOString().split("T")[0],
-      value,
-    });
-  }
-  return data;
-};
-
-// ─── RECHARTS RADAR TOPIC DATA ───
-const topicData = [
-  { name: "Arrays", count: 85 },
-  { name: "Trees", count: 65 },
-  { name: "DP", count: 40 },
-  { name: "Graphs", count: 55 },
-  { name: "Strings", count: 70 },
-  { name: "Sorting", count: 75 },
-  { name: "Backtracking", count: 50 },
-  { name: "Sliding Window", count: 60 },
-];
-
-// ─── MOCK DUE REVIEWS ───
-const mockReviews = [
-  { title: "Two Sum", difficulty: "easy", due: "Due in 1 day", isWarning: true },
-  { title: "LRU Cache", difficulty: "hard", due: "Due in 2 days", isWarning: false },
-  { title: "Longest Palindromic Substring", difficulty: "medium", due: "Due in 3 days", isWarning: false },
-];
 
 export default function DashboardPage() {
   const { getToken } = useAuth();
@@ -90,6 +42,9 @@ export default function DashboardPage() {
   const [totalCompleted, setTotalCompleted] = useState(0);
   const [sheets, setSheets] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
+  const [heatmapData, setHeatmapData] = useState<any[]>([]);
+  const [topicData, setTopicData] = useState<any[]>([]);
+  const [upcomingReviews, setUpcomingReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Animation/Loader helpers
@@ -128,15 +83,21 @@ export default function DashboardPage() {
       try {
         const token = await getToken();
         if (!token) return;
-        const [streakRes, sheetsRes, userRes] = await Promise.all([
+        const [streakRes, sheetsRes, userRes, dashboardRes] = await Promise.all([
           getStreak(token),
           getMySheets(token),
           getMe(token),
+          getDashboardStats(token),
         ]);
         setStreak(streakRes.data?.current_streak || 0);
         setTotalCompleted(streakRes.data?.total_completed || 0);
         setSheets(sheetsRes.data || []);
         setUser(userRes.data);
+        if (dashboardRes?.data) {
+          setHeatmapData(dashboardRes.data.heatmap || []);
+          setTopicData(dashboardRes.data.topicData || []);
+          setUpcomingReviews(dashboardRes.data.upcomingReviews || []);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -156,7 +117,6 @@ export default function DashboardPage() {
     }
   }, [loading]);
 
-  const heatmapData = generateHeatmapData(totalCompleted);
 
   // Monochromatic cells background builder using CSS variables
   const getCellBg = (val: number) => {
@@ -683,13 +643,16 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-2.5">
-              {mockReviews.map((item, idx) => (
-                <div
+              {upcomingReviews.length > 0 ? upcomingReviews.map((item, idx) => (
+                <a
                   key={idx}
-                  className="flex items-center justify-between p-3 rounded-xl bg-surface/30 border border-border/30 hover:border-border/60 transition-colors"
+                  href={`https://leetcode.com/problems/${item.slug}/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-3 rounded-xl bg-surface/30 border border-border/30 hover:border-foreground/30 hover:bg-surface-elevated/40 transition-all group"
                 >
                   <div className="flex flex-col min-w-0 text-left">
-                    <span className="text-xs font-semibold text-foreground truncate">{item.title}</span>
+                    <span className="text-xs font-semibold text-foreground truncate group-hover:text-primary-light transition-colors">{item.title}</span>
                     <span className={clsx("text-[10px] mt-0.5 font-medium", item.isWarning ? "text-warning" : "text-muted")}>
                       {item.due}
                     </span>
@@ -706,8 +669,12 @@ export default function DashboardPage() {
                   >
                     {item.difficulty}
                   </span>
+                </a>
+              )) : (
+                <div className="flex items-center justify-center h-20 opacity-50 text-xs">
+                  No upcoming reviews.
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
@@ -725,30 +692,42 @@ export default function DashboardPage() {
           <p className="text-xs text-muted font-light mt-0.5">See where your gaps are</p>
         </div>
 
-        <div className="w-full h-[280px] flex items-center justify-center relative z-10">
+        <div className="w-full h-[280px] min-h-[280px] flex items-center justify-center relative z-10">
           {mounted ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={topicData}>
-                <PolarGrid stroke="var(--border)" strokeOpacity={0.4} />
-                <PolarAngleAxis
-                  dataKey="name"
-                  tick={{ fill: "var(--muted)", fontSize: 10, fontWeight: 500 }}
-                />
-                <PolarRadiusAxis
-                  angle={30}
-                  domain={[0, 100]}
-                  tick={{ fill: "var(--muted)", fontSize: 9 }}
-                  axisLine={false}
-                />
-                <Radar
-                  name="Mastery"
-                  dataKey="count"
-                  stroke="var(--foreground)"
-                  fill="var(--foreground)"
-                  fillOpacity={0.12}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
+            topicData && topicData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart cx="50%" cy="50%" outerRadius="75%" data={topicData}>
+                  <PolarGrid stroke="var(--border)" strokeOpacity={0.4} />
+                  <PolarAngleAxis
+                    dataKey="name"
+                    tick={{ fill: "var(--muted)", fontSize: 10, fontWeight: 500 }}
+                  />
+                  <PolarRadiusAxis
+                    angle={30}
+                    domain={[0, 'auto']}
+                    tick={{ fill: "var(--muted)", fontSize: 9 }}
+                    axisLine={false}
+                  />
+                  <RechartsTooltip 
+                    contentStyle={{ backgroundColor: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                    itemStyle={{ color: 'var(--foreground)' }}
+                  />
+                  <Radar
+                    name="Problems Solved"
+                    dataKey="count"
+                    stroke="var(--foreground)"
+                    fill="var(--foreground)"
+                    fillOpacity={0.15}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center opacity-50 gap-2">
+                <Target className="h-8 w-8 text-muted" />
+                <p className="text-sm">Not enough data to generate chart.</p>
+                <p className="text-xs text-muted">Solve and sync more problems to see your topic coverage.</p>
+              </div>
+            )
           ) : (
             <div className="animate-pulse h-full w-full bg-surface-elevated rounded-xl" />
           )}
