@@ -365,4 +365,74 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
       });
     return true;
   }
+
+  if (request.action === "GET_CF_SUBMISSION_CODE") {
+    fetchCodeforcesSubmission(request.problemId)
+      .then(code => sendResponse({ success: true, code }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
 });
+
+async function fetchCodeforcesSubmission(problemId) {
+  const match = String(problemId).match(/^(\d+)([A-Za-z]+)$/);
+  if (!match) throw new Error("Invalid CF problem ID");
+  const contestId = match[1];
+  const index = match[2];
+  
+  // 1. Fetch shortest accepted submissions page
+  const listUrl = `https://codeforces.com/problemset/status/${contestId}/problem/${index}?order=BY_PROGRAM_LENGTH_ASC`;
+  const listResp = await fetch(listUrl);
+  const listHtml = await listResp.text();
+  
+  // Regex to find a row with 'Accepted' and extract the submission ID
+  // The submission ID is usually in a link like <a href="/contest/1111/submission/12345678" ...>12345678</a>
+  // But we need to make sure it's an Accepted row.
+  // Actually, we can just look for the first submission ID in a row that contains "Accepted".
+  // A safer approach: extract all rows `<tr data-submission-id="12345678"` and check if they have "Accepted".
+  
+  let subId = null;
+  const rowRegex = /<tr[^>]*data-submission-id="(\d+)"[^>]*>([\s\S]*?)<\/tr>/g;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(listHtml)) !== null) {
+    const id = rowMatch[1];
+    const rowContent = rowMatch[2];
+    if (rowContent.includes("Accepted") && rowContent.includes("C++")) {
+      subId = id;
+      break;
+    }
+  }
+  
+  if (!subId) {
+    // Fallback: just find any submission ID with Accepted if C++ is missing (though CF usually has it)
+    rowRegex.lastIndex = 0;
+    while ((rowMatch = rowRegex.exec(listHtml)) !== null) {
+      const id = rowMatch[1];
+      const rowContent = rowMatch[2];
+      if (rowContent.includes("Accepted")) {
+        subId = id;
+        break;
+      }
+    }
+  }
+
+  if (!subId) throw new Error("No accepted submission found on status page");
+  
+  // 2. Scrape code HTML
+  const subUrl = `https://codeforces.com/contest/${contestId}/submission/${subId}`;
+  const htmlResp = await fetch(subUrl);
+  const html = await htmlResp.text();
+  
+  const codeMatch = html.match(/<pre id="program-source-text"[^>]*>([\s\S]*?)<\/pre>/);
+  if (codeMatch) {
+    // A quick unescape
+    let code = codeMatch[1]
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, "&");
+    return code.trim();
+  }
+  throw new Error("Code match not found in HTML");
+}
