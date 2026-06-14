@@ -63,13 +63,39 @@ def _ensure_corpus_stats(supabase: Client) -> dict[str, dict]:
     Returns {topic: {total_weight, easy_count, med_count, hard_count}}.
     """
     res = supabase.table("topic_corpus_stats").select("*").execute()
+    corpus = {}
     if res.data:
-        return {row["topic"]: row for row in res.data}
+        corpus = {row["topic"]: row for row in res.data}
+    else:
+        logger.warning("topic_corpus_stats is empty — bootstrapping from lc_problems (first-run only)")
+        corpus = _compute_corpus_from_lc_problems(supabase)
+        if corpus:
+            _write_corpus_stats(supabase, corpus)
 
-    logger.warning("topic_corpus_stats is empty — bootstrapping from lc_problems (first-run only)")
-    corpus = _compute_corpus_from_lc_problems(supabase)
-    if corpus:
-        _write_corpus_stats(supabase, corpus)
+    # Merge CF corpus stats
+    cf_res = supabase.table("cf_topic_corpus_stats").select("*").execute()
+    if cf_res.data:
+        from app.core.recommendation.constants import CF_TO_LC_TOPIC_MAP
+        for r in cf_res.data:
+            tag = r.get("tag", "").lower()
+            lc_topic = CF_TO_LC_TOPIC_MAP.get(tag)
+            if not lc_topic: continue
+            
+            if lc_topic not in corpus:
+                corpus[lc_topic] = {"topic": lc_topic, "total_weight": 0.0, "easy_count": 0, "med_count": 0, "hard_count": 0}
+                
+            band = r.get("rating_band")
+            count = r.get("total_problems", 0)
+            if band == "easy":
+                 corpus[lc_topic]["easy_count"] += count
+                 corpus[lc_topic]["total_weight"] += count * 1.0
+            elif band == "medium":
+                 corpus[lc_topic]["med_count"] += count
+                 corpus[lc_topic]["total_weight"] += count * 2.5
+            elif band == "hard":
+                 corpus[lc_topic]["hard_count"] += count
+                 corpus[lc_topic]["total_weight"] += count * 5.0
+
     return corpus
 
 
@@ -275,6 +301,60 @@ def build_topic_profiles(supabase: Client, user_id: str) -> list[dict[str, Any]]
             for topic in topics_for_prob:
                 _ensure_topic(topic)
                 topic_stats[topic]["attempted_count"] += 1
+
+    # -- Step 3.5: Merge CF User Stats --
+    cf_res = supabase.table("cf_user_stats").select("*").eq("user_id", user_id).execute()
+    if cf_res.data:
+        cf_probs = [r["problem_id"] for r in cf_res.data]
+        cf_details_res = supabase.table("cf_problems").select("id, rating, tags").in_("id", cf_probs).execute()
+        cf_details = {str(p["id"]): p for p in cf_details_res.data} if cf_details_res.data else {}
+        
+        from app.core.recommendation.constants import CF_TO_LC_TOPIC_MAP
+        
+        for r in cf_res.data:
+            pid = str(r["problem_id"])
+            p_detail = cf_details.get(pid)
+            if not p_detail: continue
+            
+            rating = p_detail.get("rating") or 800
+            diff = "easy" if rating < 1300 else ("medium" if rating <= 1800 else "hard")
+            w = 1.0 if diff == "easy" else (2.5 if diff == "medium" else 5.0)
+            ms = r.get("mastery_score")
+            
+            topics_for_prob = []
+            for tag in p_detail.get("tags") or []:
+                lt = CF_TO_LC_TOPIC_MAP.get(tag.lower())
+                if lt: topics_for_prob.append(lt)
+                
+            status = r.get("final_verdict")
+            if status == "SOLVED":
+                if ms is not None and ms > 0:
+                    effective_w = w * max(0.50, min(1.0, 0.5 + ms * 0.5))
+                else:
+                    fails = r.get("failed_before_first_ac", 0)
+                    penalty = max(0.70, 1.0 - fails * 0.05)
+                    effective_w = w * penalty
+
+                for topic in set(topics_for_prob):
+                    _ensure_topic(topic)
+                    topic_stats[topic]["w_user"] += effective_w
+                    if diff == "easy": topic_stats[topic]["easy_solved"] += 1
+                    elif diff == "medium": topic_stats[topic]["med_solved"] += 1
+                    elif diff == "hard": topic_stats[topic]["hard_solved"] += 1
+                    
+                    dt_str = r.get("last_solved_at") or r.get("computed_at")
+                    if dt_str:
+                        try:
+                            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                            prev = topic_stats[topic]["last_solved_dt"]
+                            if prev is None or dt > prev:
+                                topic_stats[topic]["last_solved_dt"] = dt
+                        except ValueError:
+                            pass
+            else:
+                for topic in set(topics_for_prob):
+                    _ensure_topic(topic)
+                    topic_stats[topic]["attempted_count"] += 1
 
     # -- Step 4: Compute profiles --
     profiles: list[dict[str, Any]] = []

@@ -367,60 +367,70 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
   }
 
   if (request.action === "GET_CF_SUBMISSION_CODE") {
-    fetchCodeforcesSubmission(request.problemId)
-      .then(code => sendResponse({ success: true, code }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
+    fetchCodeforcesSubmission(request.problemId, request)
+      .then(result => sendResponse({ success: true, code: result.code, scrapedLanguage: result.scrapedLanguage }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true; // Indicates async response
   }
 });
 
-async function fetchCodeforcesSubmission(problemId) {
+async function fetchCodeforcesSubmission(problemId, request = {}) {
   const match = String(problemId).match(/^(\d+)([A-Za-z]+)$/);
   if (!match) throw new Error("Invalid CF problem ID");
   const contestId = match[1];
   const index = match[2];
   
-  // 1. Fetch shortest accepted submissions page
-  const listUrl = `https://codeforces.com/problemset/status/${contestId}/problem/${index}?order=BY_PROGRAM_LENGTH_ASC`;
-  const listResp = await fetch(listUrl);
+  // 1. Fetch recent accepted submissions for the problem
+  const listUrl = `https://codeforces.com/problemset/status/${contestId}/problem/${index}`;
+  const listResp = await fetch(listUrl, { credentials: 'include' });
   const listHtml = await listResp.text();
   
-  // Regex to find a row with 'Accepted' and extract the submission ID
-  // The submission ID is usually in a link like <a href="/contest/1111/submission/12345678" ...>12345678</a>
-  // But we need to make sure it's an Accepted row.
-  // Actually, we can just look for the first submission ID in a row that contains "Accepted".
-  // A safer approach: extract all rows `<tr data-submission-id="12345678"` and check if they have "Accepted".
+  function mapLangToCF(lang) {
+    if (!lang) return 'C++';
+    const l = lang.toLowerCase();
+    if (l === 'cpp' || l === 'c++') return 'C++';
+    if (l === 'python') return 'Python';
+    if (l === 'java') return 'Java';
+    return 'C++';
+  }
   
-  let subId = null;
+  const targetCFLang = mapLangToCF(request.language);
+  let subId;
+  let scrapedLanguage = targetCFLang;
   const rowRegex = /<tr[^>]*data-submission-id="(\d+)"[^>]*>([\s\S]*?)<\/tr>/g;
   let rowMatch;
+  
+  // Try to find the requested language first
   while ((rowMatch = rowRegex.exec(listHtml)) !== null) {
     const id = rowMatch[1];
     const rowContent = rowMatch[2];
-    if (rowContent.includes("Accepted") && rowContent.includes("C++")) {
+    if (rowContent.includes("Accepted") && rowContent.includes(targetCFLang)) {
       subId = id;
       break;
     }
   }
   
+  // Fallback to ANY accepted submission if requested language not found
   if (!subId) {
-    // Fallback: just find any submission ID with Accepted if C++ is missing (though CF usually has it)
     rowRegex.lastIndex = 0;
     while ((rowMatch = rowRegex.exec(listHtml)) !== null) {
       const id = rowMatch[1];
       const rowContent = rowMatch[2];
       if (rowContent.includes("Accepted")) {
         subId = id;
+        scrapedLanguage = "Unknown"; // We don't know the exact language
         break;
       }
     }
   }
-
-  if (!subId) throw new Error("No accepted submission found on status page");
+  
+  if (!subId) {
+    throw new Error("No accepted submission found on status page");
+  }
   
   // 2. Scrape code HTML
-  const subUrl = `https://codeforces.com/contest/${contestId}/submission/${subId}`;
-  const htmlResp = await fetch(subUrl);
+  const subUrl = `https://codeforces.com/problemset/submission/${contestId}/${subId}`;
+  const htmlResp = await fetch(subUrl, { credentials: 'include' });
   const html = await htmlResp.text();
   
   const codeMatch = html.match(/<pre id="program-source-text"[^>]*>([\s\S]*?)<\/pre>/);
@@ -432,7 +442,33 @@ async function fetchCodeforcesSubmission(problemId) {
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
       .replace(/&amp;/g, "&");
-    return code.trim();
+    return { code: code.trim(), scrapedLanguage };
   }
-  throw new Error("Code match not found in HTML");
+
+  // Fallback to internal API
+  const csrfMatch = html.match(/<meta name="X-Csrf-Token" content="([^"]+)"/i) || listHtml.match(/<meta name="X-Csrf-Token" content="([^"]+)"/i);
+  if (csrfMatch) {
+    const form = new URLSearchParams();
+    form.append("submissionId", subId);
+    form.append("csrf_token", csrfMatch[1]);
+    const apiResp = await fetch("https://codeforces.com/data/submitSource", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Csrf-Token": csrfMatch[1]
+      },
+      body: form.toString()
+    });
+    try {
+      const apiJson = await apiResp.json();
+      if (apiJson && apiJson.source) {
+        return { code: apiJson.source, scrapedLanguage };
+      }
+    } catch (e) {
+      console.error("API parse error", e);
+    }
+  }
+
+  throw new Error("Code match not found in HTML or API");
 }

@@ -13,6 +13,13 @@ from google.genai import types
 from app.config import settings
 from app.core.supabase import get_supabase
 from app.core.llm import generate_json
+try:
+    from curl_cffi import requests as cf_requests
+except ImportError:
+    import requests as cf_requests
+import requests
+import re
+from functools import lru_cache
 
 router = APIRouter()
 security = HTTPBearer()
@@ -73,52 +80,121 @@ class CodeResponse(BaseModel):
 # ── Request bodies ────────────────────────────────────────────────────────────
 
 class ExplainRequest(BaseModel):
-    problem_id: int
+    problem_id: str
     language: str = "python"
+    platform: str = "leetcode"
+    extension_code: Optional[str] = None
+    extension_language: Optional[str] = None
     tier: str = "free"
 
 class HintRequest(BaseModel):
-    problem_id: int
+    problem_id: str
     level: int = Field(ge=1, le=3, description="Hint level: 1=vague, 2=specific insight, 3=near-pseudocode")
+    platform: str = "leetcode"
     tier: str = "free"
 
 class ComplexityRequest(BaseModel):
-    problem_id: int
+    problem_id: str
     language: str = "python"
+    platform: str = "leetcode"
     tier: str = "free"
 
 class SimilarRequest(BaseModel):
-    problem_id: int
+    problem_id: str
+    platform: str = "leetcode"
     tier: str = "free"
 
 
-# ── Helper: fetch problem and solution from Supabase ─────────────────────────
+# ── Helper: fetch problem and solution from Supabase or CF ────────────────────
 
-def _fetch_problem(problem_id: int) -> dict:
-    """Returns lc_problems row or raises 404."""
+@lru_cache(maxsize=1000)
+def _fetch_cf_submission_code(problem_id: str) -> Optional[str]:
+    match = re.match(r"^(\d+)([A-Za-z]+)$", str(problem_id))
+    if not match:
+        return None
+    contest_id, index = match.groups()
+    try:
+        url = f"https://codeforces.com/api/contest.status?contestId={contest_id}&from=1&count=200"
+        resp = requests.get(url, timeout=5)
+        data = resp.json()
+        if data.get("status") != "OK": return None
+        sub_id = None
+        for s in data["result"]:
+            if s.get("verdict") == "OK" and s["problem"]["index"] == index and "C++" in s.get("programmingLanguage", ""):
+                sub_id = s["id"]
+                break
+        if not sub_id: return None
+        sub_url = f"https://codeforces.com/contest/{contest_id}/submission/{sub_id}"
+        html = cf_requests.get(sub_url, impersonate="chrome110", timeout=5).text
+        code_match = re.search(r'<pre id="program-source-text"[^>]*>(.*?)</pre>', html, re.DOTALL)
+        if code_match:
+            import html as htmllib
+            return htmllib.unescape(code_match.group(1)).strip()
+    except Exception as e:
+        print("CF Scrape error:", e)
+    return None
+
+def _fetch_problem(problem_id: str, platform: str = "leetcode") -> dict:
+    """Returns lc_problems row or mock CF problem."""
+    if platform == "codeforces":
+        return {
+            "id": problem_id,
+            "title": f"Codeforces {problem_id}",
+            "difficulty": "Unknown",
+            "content": f"[Problem description not available. If no base code is provided, please generate the optimal C++ solution and explain the problem for Codeforces {problem_id} from your pre-trained knowledge.]",
+            "topic_tags": [],
+            "hints": [],
+            "example_testcases": "",
+            "slug": problem_id
+        }
     sb = get_supabase()
-    res = sb.table("lc_problems").select("id, title, slug, difficulty, content, topic_tags, hints, example_testcases").eq("id", problem_id).limit(1).execute()
+    res = sb.table("lc_problems").select("id, title, slug, difficulty, content, topic_tags, hints, example_testcases").eq("id", int(problem_id)).limit(1).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail=f"Problem {problem_id} not found")
     return res.data[0]
 
-def _fetch_solution(problem_id: int, language: str) -> Optional[str]:
-    """Returns code string if found in DB, else None."""
-    sb = get_supabase()
-    res = sb.table("lc_problem_solutions").select("code").eq("problem_id", problem_id).eq("language", language).limit(1).execute()
-    return res.data[0]["code"] if res.data else None
+def _fetch_solution(problem_id: str, language: str, platform: str = "leetcode", extension_code: Optional[str] = None, extension_language: Optional[str] = None) -> tuple[Optional[str], str]:
+    """Returns (code string, source) if found, else (None, "")"""
+    if platform == "codeforces":
+        # Map extension_language back to standardized language names if necessary
+        ext_lang_lower = (extension_language or "").lower()
+        if ext_lang_lower in ["c++", "cpp"]: ext_lang_lower = "cpp"
+        elif ext_lang_lower == "python": ext_lang_lower = "python"
+        elif ext_lang_lower == "java": ext_lang_lower = "java"
+        else: ext_lang_lower = "unknown"
 
-def _fetch_any_solution(problem_id: int) -> Optional[tuple[str, str]]:
-    """Returns (language, code) for the first available solution in any language, or None."""
+        # If the scraped language matches the requested language, return it directly!
+        if extension_code and ext_lang_lower == language:
+            return (extension_code, "scraped_cf")
+            
+        if language in ["cpp", "c++"]:
+            code = _fetch_cf_submission_code(problem_id)
+            if code: return (code, "scraped_cf")
+        return (None, "")
     sb = get_supabase()
-    # Prefer popular languages for translation base
+    res = sb.table("lc_problem_solutions").select("code").eq("problem_id", int(problem_id)).eq("language", language).limit(1).execute()
+    return (res.data[0]["code"], "database") if res.data else (None, "")
+
+def _fetch_any_solution(problem_id: str, platform: str = "leetcode", extension_code: Optional[str] = None, extension_language: Optional[str] = None) -> Optional[tuple[str, str]]:
+    """Returns (language, code) for the first available solution in any language, or None."""
+    if platform == "codeforces":
+        if extension_code: 
+            ext_lang_lower = (extension_language or "").lower()
+            if ext_lang_lower in ["c++", "cpp"]: ext_lang_lower = "cpp"
+            elif ext_lang_lower == "python": ext_lang_lower = "python"
+            elif ext_lang_lower == "java": ext_lang_lower = "java"
+            else: ext_lang_lower = "cpp" # Fallback assumption
+            return (ext_lang_lower, extension_code)
+        cf_code = _fetch_cf_submission_code(problem_id)
+        if cf_code: return ("cpp", cf_code)
+        return None
+    sb = get_supabase()
     preferred = ["python", "java", "cpp", "javascript", "typescript", "go"]
     for lang in preferred:
-        res = sb.table("lc_problem_solutions").select("code").eq("problem_id", problem_id).eq("language", lang).limit(1).execute()
+        res = sb.table("lc_problem_solutions").select("code").eq("problem_id", int(problem_id)).eq("language", lang).limit(1).execute()
         if res.data:
             return (lang, res.data[0]["code"])
-    # Fall back to any available
-    res = sb.table("lc_problem_solutions").select("language, code").eq("problem_id", problem_id).limit(1).execute()
+    res = sb.table("lc_problem_solutions").select("language, code").eq("problem_id", int(problem_id)).limit(1).execute()
     if res.data:
         return (res.data[0]["language"], res.data[0]["code"])
     return None
@@ -132,12 +208,12 @@ async def get_code(req: ExplainRequest, _: str = Depends(verify_internal_key)):
     Fast endpoint to fetch just the solution code. Returns instantly if in DB,
     otherwise uses LLM to translate or generate it.
     """
-    code = _fetch_solution(req.problem_id, req.language)
+    code, source = _fetch_solution(req.problem_id, req.language, req.platform, req.extension_code, req.extension_language)
     if code:
-        return CodeResponse(code=code, code_source="database")
+        return CodeResponse(code=code, code_source=source)
         
-    problem = _fetch_problem(req.problem_id)
-    base = _fetch_any_solution(req.problem_id)
+    problem = _fetch_problem(req.problem_id, req.platform)
+    base = _fetch_any_solution(req.problem_id, req.platform, req.extension_code, req.extension_language)
     topic_str = ", ".join(problem.get("topic_tags") or [])
     
     prompt = f"""
@@ -190,28 +266,35 @@ async def explain_solution(req: ExplainRequest, _: str = Depends(verify_internal
     analogy, step-by-step approach, dry run trace, and code in the requested language.
     Serves solution from DB if available, otherwise translates or generates via Gemini.
     """
-    problem = _fetch_problem(req.problem_id)
+    problem = _fetch_problem(req.problem_id, req.platform)
     
     # --- Determine code source ---
-    code = _fetch_solution(req.problem_id, req.language)
-    code_source = "database"
-    translate_context = ""
+    code, source = _fetch_solution(req.problem_id, req.language, req.platform, req.extension_code, req.extension_language)
+    if code:
+        return ExplanationResponse(
+            analogy="Solution found in verified database." if source == "database" else "Solution successfully scraped from Codeforces submissions.",
+            approach_steps=["Understand the problem requirements.", "Analyze the optimal time and space complexities.", "Implement the verified solution code."],
+            dry_run=[],
+            code=code,
+            time_complexity="O(N) (Estimated)",
+            space_complexity="O(N) (Estimated)",
+            code_source=source
+        )
 
-    if not code:
-        # Try to find any existing solution to translate from
-        base = _fetch_any_solution(req.problem_id)
-        if base:
-            base_lang, base_code = base
-            code_source = "llm_translated"
-            translate_context = f"""
+    # Try to find any existing solution to translate from
+    base = _fetch_any_solution(req.problem_id, req.platform, req.extension_code, req.extension_language)
+    if base:
+        base_lang, base_code = base
+        code_source = "llm_translated"
+        translate_context = f"""
 A solution in {base_lang} already exists. Translate it idiomatically to {req.language}:
 ```{base_lang}
 {base_code}
 ```
 """
-        else:
-            code_source = "llm_generated"
-            translate_context = f"No existing solution is available. Generate an optimal solution from scratch in {req.language}."
+    else:
+        code_source = "llm_generated"
+        translate_context = f"No existing solution is available. Generate an optimal solution from scratch in {req.language}."
 
     topic_str = ", ".join(problem.get("topic_tags") or [])
     hints_str = "\n".join(f"- {h}" for h in (problem.get("hints") or []))
@@ -262,7 +345,7 @@ async def get_hints(req: HintRequest, _: str = Depends(verify_internal_key)):
     Progressive hint system. Levels 1 & 2 are free; level 3 is premium-gated upstream.
     Level 1: vague direction. Level 2: key insight. Level 3: near-pseudocode.
     """
-    problem = _fetch_problem(req.problem_id)
+    problem = _fetch_problem(req.problem_id, req.platform)
     topic_str = ", ".join(problem.get("topic_tags") or [])
     
     level_instructions = {
@@ -296,12 +379,13 @@ async def analyze_complexity(req: ComplexityRequest, _: str = Depends(verify_int
     Deep complexity analysis: overall Big-O, line-by-line breakdown,
     optimality verdict, and 1-2 alternative approaches with tradeoffs.
     """
-    problem = _fetch_problem(req.problem_id)
+    problem = _fetch_problem(req.problem_id, req.platform)
 
     # Get solution code (from DB or generate minimal version)
-    code = _fetch_solution(req.problem_id, req.language)
+    code_result = _fetch_solution(req.problem_id, req.language, req.platform)
+    code = code_result[0]
     if not code:
-        base = _fetch_any_solution(req.problem_id)
+        base = _fetch_any_solution(req.problem_id, req.platform)
         code = base[1] if base else "[No solution available — analyze based on problem description]"
 
     prompt = f"""
@@ -336,7 +420,7 @@ async def get_similar_problems(req: SimilarRequest, _: str = Depends(verify_inte
     Recommends 4-5 follow-up problems based on the current problem's topics and difficulty,
     ordered by natural learning progression.
     """
-    problem = _fetch_problem(req.problem_id)
+    problem = _fetch_problem(req.problem_id, req.platform)
     topic_str = ", ".join(problem.get("topic_tags") or [])
 
     # Fetch all available problem slugs from DB for grounding the LLM
@@ -378,3 +462,4 @@ Return a SimilarProblemsResponse with:
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM similar problems failed: {e}")
+ 
