@@ -41,8 +41,8 @@ class UserSkillModel:
     def __init__(
         self,
         profile: dict[str, Any],
-        solved_problem_ids: set[int] | None = None,
-        attempted_problem_ids: set[int] | None = None,
+        solved_problem_ids: set[int | str] | None = None,
+        attempted_problem_ids: set[int | str] | None = None,
         topic_profiles: dict[str, TopicProfile] | None = None,
         problem_status: dict[int, str] | None = None,
         solved_at: dict[int, datetime] | None = None,
@@ -88,8 +88,8 @@ class UserSkillModel:
          - leetcode_user_problems (SOLVED + ATTEMPTED, with all metadata)
          - user_topic_profiles (cached proficiency)
         """
-        solved_ids: set[int] = set()
-        attempted_ids: set[int] = set()
+        solved_ids: set[int | str] = set()
+        attempted_ids: set[int | str] = set()
         problem_status: dict[int, str] = {}
         solved_at: dict[int, datetime] = {}
         failed_attempts_before_ac: dict[int, int] = {}
@@ -166,6 +166,54 @@ class UserSkillModel:
             if len(res.data) < limit:
                 break
 
+        # Fetch CF user stats
+        cf_offset = 0
+        while True:
+            cf_res = (
+                supabase.table("cf_user_stats")
+                .select("problem_id, final_verdict, first_solved_at")
+                .eq("user_id", user_id)
+                .range(cf_offset, cf_offset + limit - 1)
+                .execute()
+            )
+            if not cf_res.data:
+                break
+
+            # Need to get CF problem tags to map to LC topics. 
+            # It's better to fetch tags for these problems.
+            # Actually, this is just for stats in profile_builder. We can skip or fetch tags.
+            # For simplicity, if we don't have problem tags in stats, we do a join or fetch them separately.
+            # We'll just collect them and fetch tags if needed.
+            # For now, we will leave CF topic counts empty unless we do a join.
+            # In Supabase, we can't easily join in the python client without a view, so let's fetch problems.
+            cf_prob_ids = [r["problem_id"] for r in cf_res.data]
+            
+            # Batch fetch problem tags
+            if cf_prob_ids:
+                prob_res = supabase.table("cf_problems").select("id, tags").in_("id", cf_prob_ids).execute()
+                prob_tags = {r["id"]: r.get("tags") or [] for r in prob_res.data}
+                
+                from app.core.recommendation.constants import CF_TO_LC_TOPIC_MAP
+                
+                for row in cf_res.data:
+                    pid = str(row["problem_id"])
+                    verdict = row.get("final_verdict")
+                    tags = prob_tags.get(pid, [])
+                    
+                    for tag in tags:
+                        lc_topic = CF_TO_LC_TOPIC_MAP.get(tag.lower())
+                        if lc_topic:
+                            if verdict == "SOLVED":
+                                topic_solve_counts[lc_topic] = topic_solve_counts.get(lc_topic, 0) + 1
+                                solved_ids.add(pid) # String IDs for CF
+                            else:
+                                topic_attempted_counts[lc_topic] = topic_attempted_counts.get(lc_topic, 0) + 1
+                                attempted_ids.add(pid)
+                                
+            cf_offset += limit
+            if len(cf_res.data) < limit:
+                break
+
         # Load cached topic profiles
         res_prof = (
             supabase.table("user_topic_profiles")
@@ -214,7 +262,7 @@ class UserSkillModel:
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def has_solved(self, problem_id: int) -> bool:
+    def has_solved(self, problem_id: int | str) -> bool:
         return problem_id in self.solved_problem_ids
 
     def topic_coverage(self, topic: str) -> int:
