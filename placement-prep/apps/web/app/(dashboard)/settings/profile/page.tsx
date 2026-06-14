@@ -15,6 +15,8 @@ export default function ProfileSettingsPage() {
   
   const [fullName, setFullName] = useState("");
   const [leetcodeUsername, setLeetcodeUsername] = useState("");
+  const [cfUsername, setCfUsername] = useState("");
+  const [syncingCf, setSyncingCf] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -29,6 +31,7 @@ export default function ProfileSettingsPage() {
           setUser(res.data);
           setFullName(res.data.full_name || "");
           setLeetcodeUsername(res.data.leetcode_username || "");
+          setCfUsername(res.data.cf_username || "");
         }
       } catch (err) {
         console.error(err);
@@ -48,6 +51,7 @@ export default function ProfileSettingsPage() {
       const res = await updateProfile(token, {
         full_name: fullName,
         leetcode_username: leetcodeUsername,
+        cf_username: cfUsername,
       });
       if (res.success) {
         alert("Profile updated successfully!");
@@ -57,6 +61,30 @@ export default function ProfileSettingsPage() {
       alert("Failed to update profile.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSyncCf = async () => {
+    if (!cfUsername) {
+      alert("Please save your Codeforces username first before syncing.");
+      return;
+    }
+    setSyncingCf(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const { syncCodeforcesData } = await import("@/lib/api");
+      const res = await syncCodeforcesData(token);
+      if (res.success) {
+        alert(res.message || "Codeforces data synced successfully!");
+      } else {
+        alert("Failed to sync Codeforces data.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to sync Codeforces data.");
+    } finally {
+      setSyncingCf(false);
     }
   };
 
@@ -129,6 +157,35 @@ export default function ProfileSettingsPage() {
             />
             <p className="text-[10px] text-muted font-light mt-1 pl-1 select-none">
               Connecting LeetCode unlocks automated progress synchronizations.
+            </p>
+          </div>
+
+          {/* Codeforces Username */}
+          <div className="space-y-2 text-left">
+            <label className="text-xs font-semibold uppercase tracking-widest text-muted flex items-center gap-2 select-none">
+              <Code2 className="h-4 w-4 text-muted" />
+              Codeforces Username
+            </label>
+            <div className="flex gap-3 items-start">
+              <input
+                type="text"
+                value={cfUsername}
+                onChange={(e) => setCfUsername(e.target.value)}
+                className="w-full bg-surface/30 border border-border/50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-foreground/20 focus:border-foreground/30 transition-all text-foreground placeholder:text-muted/50"
+                placeholder="e.g. tourist"
+              />
+              <button
+                type="button"
+                onClick={handleSyncCf}
+                disabled={syncingCf || !cfUsername}
+                className="px-4 py-3 bg-primary/10 text-primary-light text-sm font-semibold rounded-xl hover:bg-primary/20 disabled:opacity-50 transition-all whitespace-nowrap flex items-center gap-2"
+              >
+                {syncingCf ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {syncingCf ? "Syncing..." : "Sync CF"}
+              </button>
+            </div>
+            <p className="text-[10px] text-muted font-light mt-1 pl-1 select-none">
+              Save your username first, then sync Codeforces submissions manually.
             </p>
           </div>
 

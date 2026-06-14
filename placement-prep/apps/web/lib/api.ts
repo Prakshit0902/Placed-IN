@@ -325,12 +325,14 @@ export async function getProblemCode(
   problemId: number | string,
   language: string,
   token: string,
-  platform: 'leetcode' | 'codeforces' = 'leetcode'
+  platform: 'leetcode' | 'codeforces' = 'leetcode',
+  extension_code?: string,
+  extension_language?: string
 ) {
   return aiApiFetch<{
     code: string;
     code_source: 'database' | 'llm_generated' | 'llm_translated' | 'scraped_cf';
-  }>(`/api/problems/${problemId}/code`, token, { language, platform });
+  }>(`/api/problems/${problemId}/code`, token, { language, platform, extension_code, extension_language });
 }
 
 // Explanation: analogy + steps + dry run + (also returns code usually)
@@ -338,7 +340,9 @@ export async function getProblemExplanation(
   problemId: number | string,
   language: string,
   token: string,
-  platform: 'leetcode' | 'codeforces' = 'leetcode'
+  platform: 'leetcode' | 'codeforces' = 'leetcode',
+  extension_code?: string,
+  extension_language?: string
 ) {
   return aiApiFetch<{
     analogy: string;
@@ -348,7 +352,7 @@ export async function getProblemExplanation(
     time_complexity: string;
     space_complexity: string;
     code_source: 'database' | 'llm_generated' | 'llm_translated' | 'scraped_cf';
-  }>(`/api/problems/${problemId}/explain`, token, { language, platform });
+  }>(`/api/problems/${problemId}/explain`, token, { language, platform, extension_code, extension_language });
 }
 
 // Progressive hints (level 1-3)

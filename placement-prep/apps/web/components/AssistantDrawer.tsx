@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@clerk/nextjs';
 import {
   getProblemExplanation,
@@ -65,10 +66,11 @@ interface SimilarData {
 }
 
 interface Problem {
-  id: number;
+  id: number | string;
   title: string;
   difficulty?: string;
   topic_tags?: string[];
+  platform?: 'leetcode' | 'codeforces';
 }
 
 interface AssistantDrawerProps {
@@ -79,7 +81,7 @@ interface AssistantDrawerProps {
 
 type Tab = 'explain' | 'dryrun' | 'code' | 'hints' | 'complexity';
 
-const LANGUAGES = [
+const ALL_LANGUAGES = [
   { value: 'python', label: 'Python' },
   { value: 'java', label: 'Java' },
   { value: 'cpp', label: 'C++' },
@@ -89,6 +91,12 @@ const LANGUAGES = [
   { value: 'rust', label: 'Rust' },
   { value: 'kotlin', label: 'Kotlin' },
   { value: 'csharp', label: 'C#' },
+];
+
+const CF_LANGUAGES = [
+  { value: 'cpp', label: 'C++' },
+  { value: 'python', label: 'Python' },
+  { value: 'java', label: 'Java' },
 ];
 
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -212,7 +220,14 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantDrawerProps) {
   const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('explain');
-  const [language, setLanguage] = useState('python');
+  
+  const availableLanguages = problem?.platform === 'codeforces' ? CF_LANGUAGES : ALL_LANGUAGES;
+  const [language, setLanguage] = useState(problem?.platform === 'codeforces' ? 'cpp' : 'python');
+
+  // Reset language if platform changes
+  useEffect(() => {
+    setLanguage(problem?.platform === 'codeforces' ? 'cpp' : 'python');
+  }, [problem?.platform]);
 
   // Feature states
   const [explanation, setExplanation] = useState<ExplanationData | null>(null);
@@ -249,8 +264,27 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
       setComplexityQuota(null);
       setSimilar(null);
       setActiveTab('explain');
+      setLanguage(problem.platform === 'codeforces' ? 'cpp' : 'python');
     }
-  }, [problem?.id]);
+  }, [problem?.id, problem?.platform]);
+
+  const fetchFromExtension = async (targetLang: string) => {
+    if (problem?.platform !== 'codeforces') return undefined;
+    const extensionId = process.env.NEXT_PUBLIC_EXTENSION_ID;
+    if (!extensionId) return undefined;
+    
+    try {
+      const response = await chrome.runtime.sendMessage(extensionId, {
+        action: 'GET_CF_SUBMISSION_CODE',
+        problemId: problem.id,
+        language: targetLang
+      });
+      return response?.success ? { code: response.code, lang: response.scrapedLanguage } : undefined;
+    } catch (error) {
+      console.error('Failed to fetch from CF extension', error);
+      return undefined;
+    }
+  };
 
   const fetchExplanation = useCallback(async (lang: string) => {
     if (!problem) return;
@@ -259,8 +293,16 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
     setExplainQuota(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error('Not authenticated');
-      const result = await getProblemExplanation(problem.id, lang, token);
+      // Use extension as fallback for Codeforces
+      const extensionData = await fetchFromExtension(lang);
+      const result = await getProblemExplanation(
+        problem.id, 
+        lang, 
+        token, 
+        problem.platform || 'leetcode', 
+        extensionData?.code,
+        extensionData?.lang
+      );
       if (isQuotaError(result)) {
         setExplainQuota(result);
       } else {
@@ -283,7 +325,15 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
     try {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
-      const result = await getProblemCode(problem.id, lang, token);
+      const extensionData = await fetchFromExtension(lang);
+      const result = await getProblemCode(
+        problem.id, 
+        lang, 
+        token, 
+        problem.platform || 'leetcode',
+        extensionData?.code,
+        extensionData?.lang
+      );
       if (isQuotaError(result)) {
         setCodeQuota(result);
       } else {
@@ -302,7 +352,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
     try {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
-      const result = await getSimilarProblems(problem.id, token);
+      const result = await getSimilarProblems(problem.id, token, problem.platform || 'leetcode');
       if (!isQuotaError(result)) {
         setSimilar(result);
       }
@@ -320,7 +370,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
     try {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
-      const result = await getProblemHints(problem.id, level, token);
+      const result = await getProblemHints(problem.id, level, token, problem.platform || 'leetcode');
       if (isQuotaError(result)) {
         setHintQuota(result);
       } else {
@@ -340,7 +390,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
     try {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
-      const result = await getProblemComplexity(problem.id, lang, token);
+      const result = await getProblemComplexity(problem.id, lang, token, problem.platform || 'leetcode');
       if (isQuotaError(result)) {
         setComplexityQuota(result);
       } else {
@@ -376,9 +426,11 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
   ];
 
   const codeSource = codeData?.code_source || explanation?.code_source;
-  const codeSourceLabel = codeSource === 'database' ? '✅ From DB' : codeSource === 'llm_translated' ? '🔀 AI Translated' : '✨ AI Generated';
+  const codeSourceLabel = codeSource === 'database' ? '✅ Verified DB' : 
+                          codeSource === 'scraped_cf' ? '🌐 Scraped from CF' : 
+                          codeSource === 'llm_translated' ? '🔀 AI Translated' : '✨ AI Generated';
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -436,7 +488,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
               className="text-xs rounded-lg border border-white/10 px-3 py-2 text-slate-300 focus:outline-none focus:border-violet-500 cursor-pointer"
               style={{ background: 'rgba(255,255,255,0.05)' }}
             >
-              {LANGUAGES.map(l => (
+              {availableLanguages.map(l => (
                 <option key={l.value} value={l.value} style={{ background: '#1a1a2e' }}>{l.label}</option>
               ))}
             </select>
@@ -579,7 +631,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
               {!codeData && !codeLoading && !codeQuota && (
                 <div className="text-center py-10">
                   <div className="text-5xl mb-4">⌨️</div>
-                  <p className="text-slate-300 font-medium mb-6">Get the solution code in {LANGUAGES.find(l => l.value === language)?.label}</p>
+                  <p className="text-slate-300 font-medium mb-6">Get the solution code in {availableLanguages.find(l => l.value === language)?.label}</p>
                   <button
                     onClick={() => fetchCode(language)}
                     className="px-6 py-3 rounded-xl font-semibold text-sm hover:scale-105 transition-all duration-200"
@@ -589,7 +641,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
                   </button>
                 </div>
               )}
-              {codeLoading && <LoadingSpinner label={`Generating ${LANGUAGES.find(l => l.value === language)?.label} solution...`} />}
+              {codeLoading && <LoadingSpinner label={`Generating ${availableLanguages.find(l => l.value === language)?.label} solution...`} />}
               {codeQuota && <QuotaBanner error={codeQuota} onUpgrade={goToBilling} />}
               {codeData && (
                 <div className="space-y-3">
@@ -772,6 +824,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

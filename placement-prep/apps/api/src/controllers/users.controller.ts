@@ -258,10 +258,11 @@ export const updateProfile = async (c: Context) => {
     return c.json({ success: false, message: 'Invalid JSON body' }, 400);
   }
 
-  const { full_name, leetcode_username } = body;
+  const { full_name, leetcode_username, cf_username } = body;
   const updates: Record<string, string> = { updated_at: new Date().toISOString() };
   if (full_name !== undefined) updates.full_name = full_name;
   if (leetcode_username !== undefined) updates.leetcode_username = leetcode_username;
+  if (cf_username !== undefined) updates.cf_username = cf_username;
 
   try {
     const { error } = await supabase.from('users').update(updates).eq('id', userId);
@@ -668,6 +669,137 @@ export const getLeetcodeSyncStatus = async (c: Context) => {
     });
   } catch (error: unknown) {
     console.error('Error fetching sync status:', error);
+    return c.json({ success: false, message: 'Internal server error' }, 500);
+  }
+};
+
+export const getDashboardStats = async (c: Context) => {
+  const userId = c.get('userId');
+
+  try {
+    const today = new Date();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setDate(today.getDate() - 181);
+
+    // 1. Fetch Heatmap Data (from leetcode_submissions)
+    const { data: submissions, error: subError } = await supabase
+      .from('leetcode_submissions')
+      .select('submitted_at, status_code')
+      .eq('user_id', userId)
+      .eq('status_code', 10)
+      .gte('submitted_at', sixMonthsAgo.toISOString());
+
+    if (subError) throw subError;
+
+    // Aggregate submissions by date
+    const dateCounts: Record<string, number> = {};
+    for (const sub of (submissions || [])) {
+      const dateStr = new Date(sub.submitted_at).toISOString().split('T')[0];
+      dateCounts[dateStr] = (dateCounts[dateStr] || 0) + 1;
+    }
+
+    // CF stats (only if user has cf_username)
+    const { data: cfUser } = await supabase
+      .from('users')
+      .select('cf_username, cf_rating, cf_rank')
+      .eq('id', userId)
+      .single();
+
+    if (cfUser?.cf_username) {
+      const { data: cfSolved } = await supabase
+        .from('cf_user_stats')
+        .select('problem_id, final_verdict, last_solved_at')
+        .eq('user_id', userId)
+        .eq('final_verdict', 'SOLVED')
+        .gte('last_solved_at', sixMonthsAgo.toISOString());
+
+      // Merge CF solve dates into heatmap
+      for (const sub of (cfSolved || [])) {
+        if (sub.last_solved_at) {
+          const dateStr = new Date(sub.last_solved_at).toISOString().split('T')[0];
+          dateCounts[dateStr] = (dateCounts[dateStr] || 0) + 1;
+        }
+      }
+    }
+
+    const heatmap = [];
+    for (let i = 181; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      heatmap.push({
+        date: dateStr,
+        value: dateCounts[dateStr] || 0,
+      });
+    }
+
+    // 2. Fetch Topic Coverage Data (from leetcode_user_problems)
+    const { data: problems, error: probError } = await supabase
+      .from('leetcode_user_problems')
+      .select('topics, status')
+      .eq('user_id', userId)
+      .eq('status', 'SOLVED');
+
+    if (probError) throw probError;
+
+    const topicCounts: Record<string, number> = {};
+    for (const p of (problems || [])) {
+      if (Array.isArray(p.topics)) {
+        for (const topic of p.topics) {
+          topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+        }
+      }
+    }
+
+    // Convert to array and take top 8
+    const topicData = Object.entries(topicCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+    // If less than 8, fill with placeholders or just return what we have (frontend should handle it)
+
+    // 3. Fetch Due for Review (from leetcode_user_problems)
+    // Find ATTEMPTED problems or SOLVED problems with low mastery_score
+    const { data: reviews, error: revError } = await supabase
+      .from('leetcode_user_problems')
+      .select('problem_slug, difficulty, status, mastery_score, last_solved_at')
+      .eq('user_id', userId)
+      .order('mastery_score', { ascending: true })
+      .limit(5);
+
+    if (revError) throw revError;
+
+    const upcomingReviews = (reviews || []).map((r: any) => {
+      // Calculate a rough "due in" based on last_solved_at
+      let dueStr = "Due soon";
+      if (r.last_solved_at) {
+        const daysSince = Math.floor((new Date().getTime() - new Date(r.last_solved_at).getTime()) / (1000 * 3600 * 24));
+        const dueDays = Math.max(0, 7 - daysSince);
+        dueStr = dueDays === 0 ? "Due today" : `Due in ${dueDays} day${dueDays > 1 ? 's' : ''}`;
+      }
+
+      return {
+        title: r.problem_slug.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+        slug: r.problem_slug,
+        difficulty: (r.difficulty || 'medium').toLowerCase(),
+        due: dueStr,
+        isWarning: r.status === 'ATTEMPTED' || r.mastery_score < 0.4,
+      };
+    });
+
+    return c.json({
+      success: true,
+      data: {
+        heatmap,
+        topicData,
+        upcomingReviews,
+        cfUser,
+      }
+    });
+
+  } catch (error: unknown) {
+    console.error('Error fetching dashboard stats:', error);
     return c.json({ success: false, message: 'Internal server error' }, 500);
   }
 };
