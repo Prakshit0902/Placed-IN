@@ -155,7 +155,12 @@ def _fetch_problem(problem_id: str, platform: str = "leetcode") -> dict:
 
 def _fetch_solution(problem_id: str, language: str, platform: str = "leetcode", extension_code: Optional[str] = None, extension_language: Optional[str] = None) -> tuple[Optional[str], str]:
     """Returns (code string, source) if found, else (None, "")"""
+    sb = get_supabase()
     if platform == "codeforces":
+        res = sb.table("cf_problem_solutions").select("code").eq("problem_id", problem_id).eq("language", language).limit(1).execute()
+        if res.data:
+            return (res.data[0]["code"], "database")
+
         # Map extension_language back to standardized language names if necessary
         ext_lang_lower = (extension_language or "").lower()
         if ext_lang_lower in ["c++", "cpp"]: ext_lang_lower = "cpp"
@@ -171,13 +176,23 @@ def _fetch_solution(problem_id: str, language: str, platform: str = "leetcode", 
             code = _fetch_cf_submission_code(problem_id)
             if code: return (code, "scraped_cf")
         return (None, "")
-    sb = get_supabase()
+        
     res = sb.table("lc_problem_solutions").select("code").eq("problem_id", int(problem_id)).eq("language", language).limit(1).execute()
     return (res.data[0]["code"], "database") if res.data else (None, "")
 
 def _fetch_any_solution(problem_id: str, platform: str = "leetcode", extension_code: Optional[str] = None, extension_language: Optional[str] = None) -> Optional[tuple[str, str]]:
     """Returns (language, code) for the first available solution in any language, or None."""
+    sb = get_supabase()
+    preferred = ["python", "java", "cpp", "javascript", "typescript", "go"]
     if platform == "codeforces":
+        for lang in preferred:
+            res = sb.table("cf_problem_solutions").select("code").eq("problem_id", problem_id).eq("language", lang).limit(1).execute()
+            if res.data:
+                return (lang, res.data[0]["code"])
+        res = sb.table("cf_problem_solutions").select("language, code").eq("problem_id", problem_id).limit(1).execute()
+        if res.data:
+            return (res.data[0]["language"], res.data[0]["code"])
+            
         if extension_code: 
             ext_lang_lower = (extension_language or "").lower()
             if ext_lang_lower in ["c++", "cpp"]: ext_lang_lower = "cpp"
@@ -188,8 +203,7 @@ def _fetch_any_solution(problem_id: str, platform: str = "leetcode", extension_c
         cf_code = _fetch_cf_submission_code(problem_id)
         if cf_code: return ("cpp", cf_code)
         return None
-    sb = get_supabase()
-    preferred = ["python", "java", "cpp", "javascript", "typescript", "go"]
+        
     for lang in preferred:
         res = sb.table("lc_problem_solutions").select("code").eq("problem_id", int(problem_id)).eq("language", lang).limit(1).execute()
         if res.data:
@@ -198,6 +212,24 @@ def _fetch_any_solution(problem_id: str, platform: str = "leetcode", extension_c
     if res.data:
         return (res.data[0]["language"], res.data[0]["code"])
     return None
+
+def _upsert_solution(problem_id: str, language: str, platform: str, code: str):
+    sb = get_supabase()
+    try:
+        if platform == "leetcode":
+            sb.table("lc_problem_solutions").upsert({
+                "problem_id": int(problem_id),
+                "language": language,
+                "code": code
+            }, on_conflict="problem_id,language").execute()
+        elif platform == "codeforces":
+            sb.table("cf_problem_solutions").upsert({
+                "problem_id": problem_id,
+                "language": language,
+                "code": code
+            }, on_conflict="problem_id,language").execute()
+    except Exception as e:
+        print(f"Failed to upsert solution: {e}")
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -210,6 +242,8 @@ async def get_code(req: ExplainRequest, _: str = Depends(verify_internal_key)):
     """
     code, source = _fetch_solution(req.problem_id, req.language, req.platform, req.extension_code, req.extension_language)
     if code:
+        if source == "scraped_cf":
+            _upsert_solution(req.problem_id, req.language, req.platform, code)
         return CodeResponse(code=code, code_source=source)
         
     problem = _fetch_problem(req.problem_id, req.platform)
@@ -255,6 +289,7 @@ IMPORTANT FORMATTING INSTRUCTIONS:
     try:
         result = generate_json(prompt, CodeResponse, req.tier)
         result.code_source = code_source
+        _upsert_solution(req.problem_id, req.language, req.platform, result.code)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM code generation failed: {e}")
@@ -271,6 +306,8 @@ async def explain_solution(req: ExplainRequest, _: str = Depends(verify_internal
     # --- Determine code source ---
     code, source = _fetch_solution(req.problem_id, req.language, req.platform, req.extension_code, req.extension_language)
     if code:
+        if source == "scraped_cf":
+            _upsert_solution(req.problem_id, req.language, req.platform, code)
         return ExplanationResponse(
             analogy="Solution found in verified database." if source == "database" else "Solution successfully scraped from Codeforces submissions.",
             approach_steps=["Understand the problem requirements.", "Analyze the optimal time and space complexities.", "Implement the verified solution code."],
@@ -332,8 +369,8 @@ Produce:
 
     try:
         result = generate_json(prompt, ExplanationResponse, req.tier)
-        # Override code_source with the authoritative value
         result.code_source = code_source
+        _upsert_solution(req.problem_id, req.language, req.platform, result.code)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM explanation failed: {e}")
