@@ -152,18 +152,21 @@ export const getProblemById = async (c: Context) => {
 
 export const getProblemCode = async (c: Context) => {
   const userId = c.get("userId")
-  const problemId = Number(c.req.param("id"))
+  const problemId = c.req.param("id")
 
-  if (!problemId || isNaN(problemId)) {
+  if (!problemId) {
     return c.json({ success: false, message: "Invalid problem ID" }, 400)
   }
 
-  let body: { language?: string } = {}
+  let body: { language?: string; platform?: string; extension_code?: string; extension_language?: string } = {}
   try {
     body = await c.req.json()
   } catch (_) {}
 
   const language = body.language ?? "python"
+  const platform = body.platform ?? "leetcode"
+  const extension_code = body.extension_code
+  const extension_language = body.extension_language
 
   // Code generation/fetching shares the explain quota
   const feature: QuotaFeature = "explain"
@@ -186,6 +189,8 @@ export const getProblemCode = async (c: Context) => {
     const result = await callAiService("/api/query/explain/code", {
       problem_id: problemId,
       language,
+      platform,
+      extension_code,
       tier: quota.tier,
     })
     return c.json({ success: true, data: result })
@@ -199,18 +204,21 @@ export const getProblemCode = async (c: Context) => {
 
 export const getProblemExplanation = async (c: Context) => {
   const userId = c.get("userId")
-  const problemId = Number(c.req.param("id"))
+  const problemId = c.req.param("id")
 
-  if (!problemId || isNaN(problemId)) {
+  if (!problemId) {
     return c.json({ success: false, message: "Invalid problem ID" }, 400)
   }
 
-  let body: { language?: string } = {}
+  let body: { language?: string; platform?: string; extension_code?: string; extension_language?: string } = {}
   try {
     body = await c.req.json()
   } catch (_) {}
 
   const language = body.language ?? "python"
+  const platform = body.platform ?? "leetcode"
+  const extension_code = body.extension_code
+  const extension_language = body.extension_language
 
   // Quota check (explain & translate share the same pool)
   const feature: QuotaFeature = "explain"
@@ -233,6 +241,9 @@ export const getProblemExplanation = async (c: Context) => {
     const result = await callAiService("/api/query/explain/solution", {
       problem_id: problemId,
       language,
+      platform,
+      extension_code,
+      extension_language,
       tier: quota.tier,
     })
     return c.json({ success: true, data: result })
@@ -246,18 +257,19 @@ export const getProblemExplanation = async (c: Context) => {
 
 export const getProblemHints = async (c: Context) => {
   const userId = c.get("userId")
-  const problemId = Number(c.req.param("id"))
+  const problemId = c.req.param("id")
 
-  if (!problemId || isNaN(problemId)) {
+  if (!problemId) {
     return c.json({ success: false, message: "Invalid problem ID" }, 400)
   }
 
-  let body: { level?: number } = {}
+  let body: { level?: number; platform?: string } = {}
   try {
     body = await c.req.json()
   } catch (_) {}
 
   const level = body.level ?? 1
+  const platform = body.platform ?? "leetcode"
 
   if (level < 1 || level > 3) {
     return c.json({ success: false, message: "Level must be 1, 2, or 3" }, 400)
@@ -292,6 +304,7 @@ export const getProblemHints = async (c: Context) => {
     const result = await callAiService("/api/query/explain/hints", {
       problem_id: problemId,
       level,
+      platform,
       tier,
     })
     return c.json({ success: true, data: result })
@@ -305,18 +318,19 @@ export const getProblemHints = async (c: Context) => {
 
 export const getProblemComplexity = async (c: Context) => {
   const userId = c.get("userId")
-  const problemId = Number(c.req.param("id"))
+  const problemId = c.req.param("id")
 
-  if (!problemId || isNaN(problemId)) {
+  if (!problemId) {
     return c.json({ success: false, message: "Invalid problem ID" }, 400)
   }
 
-  let body: { language?: string } = {}
+  let body: { language?: string; platform?: string } = {}
   try {
     body = await c.req.json()
   } catch (_) {}
 
   const language = body.language ?? "python"
+  const platform = body.platform ?? "leetcode"
 
   const quota = await checkAndConsumeQuota(userId, "complexity")
 
@@ -337,6 +351,7 @@ export const getProblemComplexity = async (c: Context) => {
     const result = await callAiService("/api/query/explain/complexity", {
       problem_id: problemId,
       language,
+      platform,
       tier: quota.tier,
     })
     return c.json({ success: true, data: result })
@@ -349,11 +364,18 @@ export const getProblemComplexity = async (c: Context) => {
 // ── getSimilarProblems ───────────────────────────────────────────────────────
 
 export const getSimilarProblems = async (c: Context) => {
-  const problemId = Number(c.req.param("id"))
+  const problemId = c.req.param("id")
 
-  if (!problemId || isNaN(problemId)) {
+  if (!problemId) {
     return c.json({ success: false, message: "Invalid problem ID" }, 400)
   }
+
+  let body: { platform?: string } = {}
+  try {
+    body = await c.req.json()
+  } catch (_) {}
+
+  const platform = body.platform ?? "leetcode"
 
   // Similar problems is free — no quota needed
   const userId = c.get("userId")
@@ -363,6 +385,7 @@ export const getSimilarProblems = async (c: Context) => {
   try {
     const result = await callAiService("/api/query/explain/similar", {
       problem_id: problemId,
+      platform,
       tier,
     })
     return c.json({ success: true, data: result })
