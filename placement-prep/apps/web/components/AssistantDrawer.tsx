@@ -43,7 +43,7 @@ interface ExplanationData {
   code: string;
   time_complexity: string;
   space_complexity: string;
-  code_source: 'database' | 'llm_generated' | 'llm_translated';
+  code_source: 'database' | 'llm_generated' | 'llm_translated' | 'scraped_cf';
 }
 
 interface HintData {
@@ -235,7 +235,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
   const [explainError, setExplainError] = useState<string | null>(null);
   const [explainQuota, setExplainQuota] = useState<QuotaError | null>(null);
 
-  const [codeData, setCodeData] = useState<{code: string; code_source: 'database' | 'llm_generated' | 'llm_translated'} | null>(null);
+  const [codeData, setCodeData] = useState<{code: string; code_source: 'database' | 'llm_generated' | 'llm_translated' | 'scraped_cf'} | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeQuota, setCodeQuota] = useState<QuotaError | null>(null);
 
@@ -274,7 +274,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
     if (!extensionId) return undefined;
     
     try {
-      const response = await chrome.runtime.sendMessage(extensionId, {
+      const response = await (window as any).chrome?.runtime?.sendMessage(extensionId, {
         action: 'GET_CF_SUBMISSION_CODE',
         problemId: problem.id,
         language: targetLang
@@ -293,6 +293,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
     setExplainQuota(null);
     try {
       const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
       // Use extension as fallback for Codeforces
       const extensionData = await fetchFromExtension(lang);
       const result = await getProblemExplanation(

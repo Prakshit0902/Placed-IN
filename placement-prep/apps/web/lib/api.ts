@@ -57,6 +57,13 @@ export async function getPersonalizedSheet(sheetId: string, token: string) {
   return apiFetch<{ success: boolean; data: any }>(`/api/sheets/personalized/${sheetId}`, { token });
 }
 
+export async function deleteSheet(sheetId: string, token: string) {
+  return apiFetch<{ success: boolean; message: string }>(
+    `/api/sheets/personalized/${sheetId}`,
+    { method: 'DELETE', token }
+  );
+}
+
 // ---- Users ----
 
 export async function getMe(token: string) {

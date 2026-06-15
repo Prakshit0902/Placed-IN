@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { Loader2, ChevronRight, Lock, Target, Calendar, CheckCircle2, Layers } from "lucide-react";
+import { Loader2, ChevronRight, Lock, Target, Calendar, CheckCircle2, Layers, Trash2 } from "lucide-react";
 import {
   getFullTemplate,
   getPersonalizedSheet,
   getTemplateProgress,
   getSheetProgress,
   updateProgress,
+  deleteSheet,
 } from "@/lib/api";
 import { QuestionRow } from "@/components/QuestionRow";
 import { gsap } from "gsap";
@@ -19,7 +20,11 @@ import clsx from "clsx";
 export default function SheetViewerPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { getToken, isSignedIn } = useAuth();
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const sheetId = params.sheet_id as string;
   const sheetType = searchParams.get("type");
@@ -120,6 +125,24 @@ export default function SheetViewerPage() {
     setExpandedWeeks((prev) => ({ ...prev, [weekNum]: !prev[weekNum] }));
   };
 
+  const deleteThisSheet = async () => {
+    setIsDeleting(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await deleteSheet(sheetId, token);
+      if (res.success) {
+        router.push('/dashboard');
+      } else {
+        alert(res.message || "Failed to delete sheet.");
+      }
+    } catch (err: any) {
+      console.error("Error deleting sheet:", err);
+      alert(err.message || "An error occurred while deleting the sheet.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
   // Compute solves progress details
   const getOverallProgress = () => {
     if (!sheet || !sheet.weeks) return { completed: 0, total: 0, percent: 0 };
@@ -262,6 +285,42 @@ export default function SheetViewerPage() {
             <p className="text-xs text-muted font-light leading-relaxed">
               Sign in to track study progress and unlock personalized recommendation updates.
             </p>
+          </div>
+        )}
+        
+        {isSignedIn && isPersonalized && (
+          <div className="relative z-10 shrink-0 flex items-center gap-3">
+            {showConfirm ? (
+              <div className="flex items-center gap-2 animate-[fadeIn_0.2s_ease-out]">
+                <button
+                  onClick={deleteThisSheet}
+                  disabled={isDeleting}
+                  className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                  Confirm Delete
+                </button>
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  disabled={isDeleting}
+                  className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-surface border border-border hover:bg-surface-elevated transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowConfirm(true)}
+                className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95 duration-200"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete Plan
+              </button>
+            )}
           </div>
         )}
       </div>
