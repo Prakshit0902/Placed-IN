@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ExternalLink, CheckCircle, Circle, Clock, Sparkles } from "lucide-react";
-import { updateProgress } from "@/lib/api";
+import { updateCpProgress } from "@/lib/api";
 import { useAuth } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -10,29 +10,20 @@ import clsx from "clsx";
 
 const AssistantDrawer = dynamic(() => import("./AssistantDrawer"), { ssr: false });
 
-const LANG_ICONS: Record<string, string> = {
-  python: "🐍",
-  java: "☕",
-  cpp: "⚡",
-  javascript: "JS",
-  typescript: "TS",
-  go: "🔵",
-  rust: "🦀",
-  kotlin: "🎯",
-};
-
-interface QuestionRowProps {
-  question: any;
-  weekNumber: number;
+interface CpQuestionRowProps {
+  problem: any;
+  dayNumber: number;
   sheetId: string;
-  isPersonalized: boolean;
+  onStatusChange?: (newStatus: string) => void;
 }
 
-export function QuestionRow({ question, weekNumber, sheetId, isPersonalized }: QuestionRowProps) {
+export function CpQuestionRow({ problem, dayNumber, sheetId, onStatusChange }: CpQuestionRowProps) {
   const { getToken } = useAuth();
-  const [status, setStatus] = useState(question.status || "not_started");
+  const [status, setStatus] = useState(problem.status || "not_started");
   const [updating, setUpdating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const isLc = problem.platform === "leetcode";
 
   const toggleStatus = async () => {
     if (updating) return;
@@ -43,13 +34,11 @@ export function QuestionRow({ question, weekNumber, sheetId, isPersonalized }: Q
     try {
       const token = await getToken();
       if (!token) return;
-      const payload = {
-        week_number: weekNumber,
-        question_id: question.id,
-        status: newStatus,
-        ...(isPersonalized ? { sheet_id: sheetId } : { template_id: sheetId }),
-      };
-      await updateProgress(token, payload);
+      const probIdStr = isLc ? `lc_${problem.problem_id}` : `cf_${problem.problem_id}`;
+      await updateCpProgress(sheetId, probIdStr, token, newStatus);
+      if (onStatusChange) {
+        onStatusChange(newStatus);
+      }
     } catch (error) {
       console.error(error);
       setStatus(status); // fallback revert
@@ -59,6 +48,9 @@ export function QuestionRow({ question, weekNumber, sheetId, isPersonalized }: Q
   };
 
   const isCompleted = status === "completed";
+  const linkUrl = isLc 
+    ? `https://leetcode.com/problems/${problem.problem_slug}` 
+    : problem.cf_url || `https://codeforces.com/problemset/problem/${problem.problem_id}`;
 
   return (
     <>
@@ -84,68 +76,73 @@ export function QuestionRow({ question, weekNumber, sheetId, isPersonalized }: Q
           <div className="flex-1 min-w-0">
             <div className="inline-flex items-center gap-2 flex-wrap">
               <Link
-                href={`/problems/${question.id}`}
+                href={linkUrl}
+                target="_blank"
+                rel="noreferrer"
                 className={clsx(
                   "font-semibold text-sm hover:text-foreground transition-colors",
                   isCompleted ? "line-through text-muted font-normal" : "text-foreground/90"
                 )}
               >
-                {question.title}
+                {problem.problem_name}
               </Link>
               <a
-                href={`https://leetcode.com/problems/${question.slug}/`}
+                href={linkUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="text-muted hover:text-foreground transition-colors inline-flex opacity-0 group-hover:opacity-100"
-                title="Open on LeetCode"
+                title={`Open on ${isLc ? 'LeetCode' : 'Codeforces'}`}
               >
                 <ExternalLink className="h-3 w-3" />
               </a>
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5 mt-2 font-mono text-[10px] text-muted">
-              <span
-                className={clsx(
-                  "px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider border",
-                  question.difficulty === "Easy"
-                    ? "badge-easy"
-                    : question.difficulty === "Medium"
-                    ? "badge-medium"
-                    : "badge-hard"
-                )}
-              >
-                {question.difficulty}
+              <span className="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider bg-surface border border-border">
+                {problem.platform}
               </span>
-              {question.lc_status === "ATTEMPTED" && (
+              
+              {isLc && problem.difficulty && (
+                <span
+                  className={clsx(
+                    "px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider border",
+                    problem.difficulty === "Easy"
+                      ? "badge-easy"
+                      : problem.difficulty === "Medium"
+                      ? "badge-medium"
+                      : "badge-hard"
+                  )}
+                >
+                  {problem.difficulty}
+                </span>
+              )}
+              
+              {!isLc && problem.rating && (
+                <span className="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider border border-purple-500/30 text-purple-400 bg-purple-500/10">
+                  Rating {problem.rating}
+                </span>
+              )}
+
+              {problem.status === "attempted" && !isCompleted && (
                 <span className="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider bg-warning/10 text-warning border border-warning/20">
                   Attempted
                 </span>
               )}
-              {question.frequency ? (
-                <span className="px-1.5 py-0.5 bg-surface border border-border rounded">Freq: {question.frequency}</span>
-              ) : null}
+              
               <div className="flex items-center gap-1 font-sans font-light">
                 <Clock className="h-3.5 w-3.5 text-muted shrink-0" />
-                <span>{question.difficulty === "Easy" ? "20m" : question.difficulty === "Medium" ? "45m" : "90m"}</span>
+                <span>
+                  {isLc 
+                    ? (problem.difficulty === "Easy" ? "20m" : problem.difficulty === "Medium" ? "45m" : "90m")
+                    : (problem.rating && problem.rating < 1200 ? "30m" : problem.rating && problem.rating < 1600 ? "45m" : "90m")
+                  }
+                </span>
               </div>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3 flex-shrink-0">
-          {/* Topic tags */}
-          <div className="hidden md:flex flex-wrap gap-1.5 max-w-[180px] justify-end">
-            {question.topic_tags?.slice(0, 3).map((tag: string) => (
-              <span
-                key={tag}
-                className="px-2 py-0.5 bg-surface/50 border border-border/50 text-muted text-[10px] rounded-md"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-
-          {/* AI Assistant button */}
           <button
             onClick={() => setDrawerOpen(true)}
             title="Open AI Assistant"
@@ -160,10 +157,11 @@ export function QuestionRow({ question, weekNumber, sheetId, isPersonalized }: Q
         problem={
           drawerOpen
             ? {
-                id: question.id,
-                title: question.title,
-                difficulty: question.difficulty,
-                topic_tags: question.topic_tags,
+                id: problem.problem_id,
+                title: problem.problem_name,
+                difficulty: isLc ? problem.difficulty : problem.rating?.toString(),
+                topic_tags: [],
+                platform: isLc ? 'leetcode' : 'codeforces'
               }
             : null
         }
