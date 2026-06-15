@@ -9,7 +9,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional
 from google import genai
-from google.genai import types
 from app.config import settings
 from app.core.supabase import get_supabase
 from app.core.llm import generate_json
@@ -125,7 +124,10 @@ def _fetch_cf_submission_code(problem_id: str) -> Optional[str]:
                 break
         if not sub_id: return None
         sub_url = f"https://codeforces.com/contest/{contest_id}/submission/{sub_id}"
-        html = cf_requests.get(sub_url, impersonate="chrome110", timeout=5).text
+        kwargs = {"timeout": 5}
+        if getattr(cf_requests, "__name__", "") == "curl_cffi.requests":
+            kwargs["impersonate"] = "chrome110"
+        html = cf_requests.get(sub_url, **kwargs).text
         code_match = re.search(r'<pre id="program-source-text"[^>]*>(.*?)</pre>', html, re.DOTALL)
         if code_match:
             import html as htmllib

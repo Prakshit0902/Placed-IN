@@ -51,6 +51,7 @@ async function checkAndConsumeQuota(
       allowed: false,
       used,
       resets_at: tomorrow.toISOString(),
+      tier: "free",
     }
   }
 

@@ -28,6 +28,9 @@ export const getCompanies = async (c: Context) => {
 
 export const getCompanyProblems = async (c: Context) => {
   const company = c.req.param('name');
+  if (!company) {
+    return c.json({ success: false, message: 'Company name parameter is required' }, 400);
+  }
   const page = c.req.query('page') || '1';
   const PAGE_SIZE = 50;
 

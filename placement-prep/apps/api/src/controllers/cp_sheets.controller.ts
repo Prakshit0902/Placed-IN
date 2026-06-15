@@ -235,6 +235,10 @@ export const updateCpProgress = async (c: Context) => {
   const sheetId = c.req.param('id');
   const problemId = c.req.param('problemId'); // e.g. "lc_123" or "cf_1234A"
   
+  if (!problemId) {
+    return c.json({ success: false, message: 'Invalid or missing problemId parameter' }, 400);
+  }
+
   let body;
   try {
     body = await c.req.json();
