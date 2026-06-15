@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useUser, UserButton } from "@clerk/nextjs";
+import { useUser, UserButton, useAuth } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
+import { getSubscriptionStatus } from "@/lib/api";
 import {
   LayoutDashboard,
   FileText,
@@ -19,11 +21,10 @@ import React from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard#sheets", label: "My Sheets", icon: FileText },
   { href: "/search", label: "Search", icon: Search },
   { href: "/progress", label: "Progress", icon: BarChart2 },
+  { href: "/cp-sheets", label: "CP Sheets", icon: FileText },
   { href: "/assistant", label: "AI Assistant", icon: Sparkles, badge: "Beta" },
-  { href: "/sprints", label: "Sprints", icon: Zap },
   { href: "/settings/profile", label: "Settings", icon: Settings },
   { href: "/settings/billing", label: "Billing", icon: CreditCard },
 ];
@@ -35,7 +36,28 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const { user } = useUser();
+  const { getToken } = useAuth();
   const username = user?.fullName || user?.username || "Guest";
+
+  const [tier, setTier] = useState<string>("free");
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await getSubscriptionStatus(token);
+        if (res.success && res.data?.subscription_tier) {
+          setTier(res.data.subscription_tier);
+        }
+      } catch (err) {
+        console.error("Failed to load subscription status", err);
+      }
+    }
+    load();
+  }, [getToken]);
+
+  const isPremium = tier !== "free";
 
   // Magnetic button handlers
   const handleMagneticMove = (e: React.MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
@@ -95,17 +117,17 @@ export default function DashboardLayout({
           {/* Navigation Items */}
           <nav className="flex flex-col gap-1 mt-2">
             {navItems.map((item) => {
-              const isAiOrSprint = item.href === "/assistant" || item.href === "/sprints";
+              const isAi = item.href === "/assistant";
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" &&
-                  !isAiOrSprint &&
+                  !isAi &&
                   pathname.startsWith(item.href));
 
               return (
                 <Link
                   key={item.label}
-                  href={isAiOrSprint ? "#" : item.href}
+                  href={isAi ? "#" : item.href}
                   className={clsx(
                     "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
                     isActive
@@ -135,25 +157,43 @@ export default function DashboardLayout({
 
         {/* Bottom of Sidebar: Upgrade to Pro card */}
         <div className="relative z-10 mt-auto pt-4 border-t border-border/30">
-          <div className="glass-card p-4 relative overflow-hidden group">
-            <div className="reflection-sweep absolute inset-0 opacity-40 group-hover:animate-[sweep_2.5s_linear_infinite]" />
-            <div className="relative z-10">
-              <h4 className="text-[13px] font-semibold tracking-wide text-foreground">Upgrade to Pro</h4>
-              <p className="text-[11px] text-muted mt-1 mb-3">
-                Unlock custom sheet generation, premium analytics & SDE-2 study plans.
-              </p>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[9px] uppercase font-mono tracking-widest text-muted">Free Plan</span>
-                <button
-                  onMouseMove={handleMagneticMove}
-                  onMouseLeave={handleMagneticLeave}
-                  className="magnetic-btn text-[11px] px-3.5 py-1.5 bg-foreground text-background font-medium rounded-full hover:opacity-90 transition-opacity cursor-pointer shrink-0"
-                >
-                  Upgrade
-                </button>
+          {!isPremium ? (
+            <div className="glass-card p-4 relative overflow-hidden group">
+              <div className="reflection-sweep absolute inset-0 opacity-40 group-hover:animate-[sweep_2.5s_linear_infinite]" />
+              <div className="relative z-10">
+                <h4 className="text-[13px] font-semibold tracking-wide text-foreground">Upgrade to Pro</h4>
+                <p className="text-[11px] text-muted mt-1 mb-3">
+                  Unlock custom sheet generation, premium analytics & SDE-2 study plans.
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[9px] uppercase font-mono tracking-widest text-muted">Free Plan</span>
+                  <Link href="/settings/billing">
+                    <button
+                      onMouseMove={handleMagneticMove}
+                      onMouseLeave={handleMagneticLeave}
+                      className="magnetic-btn text-[11px] px-3.5 py-1.5 bg-foreground text-background font-medium rounded-full hover:opacity-90 transition-opacity cursor-pointer shrink-0"
+                    >
+                      Upgrade
+                    </button>
+                  </Link>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="glass-card p-4 relative overflow-hidden group border border-primary/20 bg-primary/5">
+              <div className="relative z-10 flex items-center justify-between gap-2">
+                <div className="flex flex-col">
+                  <h4 className="text-[13px] font-semibold tracking-wide text-primary-light flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5" /> Pro Access
+                  </h4>
+                  <span className="text-[10px] text-muted mt-0.5 capitalize">{tier} Plan Active</span>
+                </div>
+                <Link href="/settings/billing" className="p-1.5 rounded-full hover:bg-surface transition-colors">
+                  <Settings className="h-4 w-4 text-muted" />
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
