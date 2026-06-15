@@ -176,3 +176,22 @@ export const getPersonalizedSheet = async (c: Context) => {
     return c.json({ success: false, message: 'Internal server error' }, 500);
   }
 };
+
+export const deleteSheet = async(c: Context) => {
+  const userId = c.get('userId');
+  const sheetId = c.req.param('sheetId');
+
+  try {
+    const { error } = await supabase
+      .from('personalized_sheets')
+      .delete()
+      .eq('id', sheetId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return c.json({ success: true, message: 'Sheet deleted successfully.' });
+  } catch (error: any) {
+    console.error('Error deleting sheet:', error);
+    return c.json({ success: false, message: 'Internal server error' }, 500);
+  }
+}
