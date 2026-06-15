@@ -1,5 +1,12 @@
 import { createMiddleware } from 'hono/factory';
-import { verifyToken } from '@clerk/backend';
+import { createClerkClient } from '@clerk/backend';
+
+const clerkClient = process.env.CLERK_SECRET_KEY && process.env.CLERK_PUBLISHABLE_KEY 
+  ? createClerkClient({ 
+      secretKey: process.env.CLERK_SECRET_KEY,
+      publishableKey: process.env.CLERK_PUBLISHABLE_KEY
+    })
+  : null;
 
 export type AuthEnv = {
   Variables: {
@@ -8,29 +15,24 @@ export type AuthEnv = {
 };
 
 export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ success: false, message: 'Unauthorized: Missing or invalid Authorization header' }, 401);
-  }
-
-  const token = authHeader.replace('Bearer ', '');
-  const secretKey = process.env.CLERK_SECRET_KEY;
-
-  if (!secretKey) {
-    console.warn('CLERK_SECRET_KEY is missing in environment variables.');
+  if (!clerkClient) {
+    console.warn('CLERK_SECRET_KEY or CLERK_PUBLISHABLE_KEY is missing in environment variables.');
+    return c.json({ success: false, message: 'Unauthorized: Server configuration error' }, 500);
   }
 
   try {
-    const verifiedToken = await verifyToken(token, {
-      secretKey: secretKey,
-    });
+    const requestState = await clerkClient.authenticateRequest(c.req.raw);
     
-    if (!verifiedToken.sub) {
+    if (!requestState.isSignedIn) {
+      return c.json({ success: false, message: 'Unauthorized: Token not verified' }, 401);
+    }
+    
+    const authObj = requestState.toAuth();
+    if (!authObj.userId) {
       return c.json({ success: false, message: 'Unauthorized: Token sub is missing' }, 401);
     }
     
-    // verifiedToken.sub contains the user ID from Clerk
-    c.set('userId', verifiedToken.sub);
+    c.set('userId', authObj.userId);
     await next();
   } catch (error) {
     console.error('Token verification failed:', error);
