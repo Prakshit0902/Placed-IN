@@ -117,17 +117,15 @@ export default function DashboardLayout({
           {/* Navigation Items */}
           <nav className="flex flex-col gap-1 mt-2">
             {navItems.map((item) => {
-              const isAi = item.href === "/assistant";
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" &&
-                  !isAi &&
                   pathname.startsWith(item.href));
 
               return (
                 <Link
                   key={item.label}
-                  href={isAi ? "#" : item.href}
+                  href={item.href}
                   className={clsx(
                     "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
                     isActive
