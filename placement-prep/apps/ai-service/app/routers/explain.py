@@ -310,30 +310,23 @@ async def explain_solution(req: ExplainRequest, _: str = Depends(verify_internal
     if code:
         if source == "scraped_cf":
             _upsert_solution(req.problem_id, req.language, req.platform, code)
-        return ExplanationResponse(
-            analogy="Solution found in verified database." if source == "database" else "Solution successfully scraped from Codeforces submissions.",
-            approach_steps=["Understand the problem requirements.", "Analyze the optimal time and space complexities.", "Implement the verified solution code."],
-            dry_run=[],
-            code=code,
-            time_complexity="O(N) (Estimated)",
-            space_complexity="O(N) (Estimated)",
-            code_source=source
-        )
-
-    # Try to find any existing solution to translate from
-    base = _fetch_any_solution(req.problem_id, req.platform, req.extension_code, req.extension_language)
-    if base:
-        base_lang, base_code = base
-        code_source = "llm_translated"
-        translate_context = f"""
+        code_source = source
+        translate_context = f"The optimal solution code in {req.language} is already available. Use this code as-is for the code field, and generate the analogy, steps, and dry run trace based on it."
+    else:
+        # Try to find any existing solution to translate from
+        base = _fetch_any_solution(req.problem_id, req.platform, req.extension_code, req.extension_language)
+        if base:
+            base_lang, base_code = base
+            code_source = "llm_translated"
+            translate_context = f"""
 A solution in {base_lang} already exists. Translate it idiomatically to {req.language}:
 ```{base_lang}
 {base_code}
 ```
 """
-    else:
-        code_source = "llm_generated"
-        translate_context = f"No existing solution is available. Generate an optimal solution from scratch in {req.language}."
+        else:
+            code_source = "llm_generated"
+            translate_context = f"No existing solution is available. Generate an optimal solution from scratch in {req.language}."
 
     topic_str = ", ".join(problem.get("topic_tags") or [])
     hints_str = "\n".join(f"- {h}" for h in (problem.get("hints") or []))
@@ -357,8 +350,8 @@ Hints from LeetCode:
 Target language: **{req.language}**
 {translate_context}
 
-{"Existing code to use as-is:" if code_source == "database" else ""}
-{f"```{req.language}\\n{code}\\n```" if code_source == "database" and code else ""}
+{"Existing code to use as-is:" if code_source in ("database", "scraped_cf") else ""}
+{f"```{req.language}\\n{code}\\n```" if code_source in ("database", "scraped_cf") and code else ""}
 
 Produce:
 1. analogy: A vivid, relatable real-world analogy (2-4 sentences) that captures the core algorithmic intuition
