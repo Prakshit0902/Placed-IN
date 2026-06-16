@@ -196,8 +196,11 @@ export default function DashboardLayout({
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <main className="flex-1 p-8 overflow-y-auto">
+      <div className={clsx("flex-1 min-w-0 flex flex-col", pathname === "/assistant" && "h-screen overflow-hidden")}>
+        <main className={clsx(
+          "flex-1 p-8",
+          pathname === "/assistant" ? "overflow-hidden flex flex-col min-h-0" : "overflow-y-auto"
+        )}>
           {children}
         </main>
       </div>

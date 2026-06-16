@@ -208,7 +208,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
         </button>
       </div>
       <pre className="p-4 overflow-x-auto text-sm font-mono leading-relaxed"
-        style={{ background: '#0b0b14', maxHeight: '420px', color: '#f8f8f2' }}>
+        style={{ background: '#0b0b14', maxHeight: '420px', color: '#f8f8f2' }} data-lenis-prevent>
         <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       </pre>
     </div>
@@ -521,7 +521,7 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5" data-lenis-prevent>
 
           {/* ── EXPLAIN TAB ── */}
           {activeTab === 'explain' && (

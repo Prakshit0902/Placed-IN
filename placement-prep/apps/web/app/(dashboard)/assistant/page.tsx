@@ -244,7 +244,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
         </button>
       </div>
       <pre className="p-4 overflow-x-auto text-sm font-mono leading-relaxed"
-        style={{ background: '#0b0b14', maxHeight: '480px', color: '#f8f8f2' }}>
+        style={{ background: '#0b0b14', maxHeight: '480px', color: '#f8f8f2' }} data-lenis-prevent>
         <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       </pre>
     </div>
@@ -548,7 +548,7 @@ export default function AssistantPage() {
                           codeSource === 'llm_translated' ? '🔀 Translated' : '✨ AI Generated';
 
   return (
-    <div ref={pageContainerRef} className="max-w-7xl mx-auto space-y-6 text-foreground h-[calc(100vh-6rem)] flex flex-col">
+    <div ref={pageContainerRef} className="max-w-7xl mx-auto space-y-6 text-foreground flex-1 min-h-0 flex flex-col w-full">
       {/* Background glow effects */}
       <div className="absolute -top-32 -right-32 w-80 h-80 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -left-32 w-72 h-72 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
@@ -602,7 +602,7 @@ export default function AssistantPage() {
           </div>
 
           {/* Results/Suggestions panel (scrollable) */}
-          <div className="flex-1 overflow-y-auto pr-1">
+          <div className="flex-1 overflow-y-auto pr-1" data-lenis-prevent>
             {searchLoading ? (
               <div className="flex flex-col items-center justify-center py-20 text-muted space-y-4 select-none">
                 <Brain className="h-10 w-10 animate-pulse text-violet-400" />
@@ -818,7 +818,7 @@ export default function AssistantPage() {
               </div>
 
               {/* Workspace Body Content (Scrollable) */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 relative text-left">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 relative text-left" data-lenis-prevent>
                 
                 {/* ── EXPLAIN TAB ── */}
                 {activeTab === 'explain' && (
