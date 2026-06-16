@@ -308,9 +308,6 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
         setExplainQuota(result);
       } else {
         setExplanation(result);
-        if (!codeData) {
-            setCodeData({ code: result.code, code_source: result.code_source });
-        }
       }
     } catch (e: any) {
       setExplainError(e.message);
@@ -346,6 +343,21 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
       setCodeLoading(false);
     }
   }, [problem, getToken]);
+
+  const handleUnlockCode = () => {
+    if (explanation && explanation.code) {
+      setCodeData({ code: explanation.code, code_source: explanation.code_source });
+    } else {
+      fetchCode(language);
+    }
+  };
+
+  const handleExplainCodeFromTab = () => {
+    setActiveTab('explain');
+    if (!explanation) {
+      fetchExplanation(language);
+    }
+  };
 
   const loadSimilarProblems = useCallback(async () => {
     if (!problem) return;
@@ -634,11 +646,11 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
                   <div className="text-5xl mb-4">⌨️</div>
                   <p className="text-slate-300 font-medium mb-6">Get the solution code in {availableLanguages.find(l => l.value === language)?.label}</p>
                   <button
-                    onClick={() => fetchCode(language)}
+                    onClick={handleUnlockCode}
                     className="px-6 py-3 rounded-xl font-semibold text-sm hover:scale-105 transition-all duration-200"
                     style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white' }}
                   >
-                    Generate Code ✨
+                    Unlock Solution Code
                   </button>
                 </div>
               )}
@@ -650,12 +662,22 @@ export default function AssistantDrawer({ problem, isOpen, onClose }: AssistantD
                     <span className="text-xs px-2 py-1 rounded-full border border-white/10 text-slate-400">
                       {codeSourceLabel}
                     </span>
-                    <button
-                      onClick={() => { setCodeData(null); fetchCode(language); }}
-                      className="text-xs text-slate-400 hover:text-violet-400 transition-colors"
-                    >
-                      Regenerate ↺
-                    </button>
+                          <div className="flex items-center gap-3">
+                            {!explanation && !explainLoading && (
+                              <button
+                                onClick={handleExplainCodeFromTab}
+                                className="text-xs text-violet-450 hover:text-violet-300 transition-colors cursor-pointer flex items-center gap-1 font-semibold"
+                              >
+                                💡 Explain Code
+                              </button>
+                            )}
+                            <button
+                              onClick={() => { setCodeData(null); fetchCode(language); }}
+                              className="text-xs text-slate-400 hover:text-violet-400 transition-colors"
+                            >
+                              Regenerate ↺
+                            </button>
+                          </div>
                   </div>
                   <CodeBlock code={codeData.code} language={language} />
                 </div>

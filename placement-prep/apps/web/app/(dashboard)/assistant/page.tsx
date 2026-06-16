@@ -312,8 +312,6 @@ export default function AssistantPage() {
     setComplexityQuota(null);
     setSimilar(null);
 
-    // Trigger explanation fetch automatically
-    fetchExplanation(problem, defaultLang);
   };
 
   // Run GSAP initial load animations
@@ -419,9 +417,6 @@ export default function AssistantPage() {
         setExplainQuota(result);
       } else {
         setExplanation(result);
-        if (!codeData) {
-          setCodeData({ code: result.code, code_source: result.code_source });
-        }
       }
     } catch (e: any) {
       setExplainError(e.message || 'Failed to generate explanation');
@@ -457,6 +452,21 @@ export default function AssistantPage() {
       setCodeLoading(false);
     }
   }, [selectedProblem, getToken]);
+
+  const handleUnlockCode = () => {
+    if (explanation && explanation.code) {
+      setCodeData({ code: explanation.code, code_source: explanation.code_source });
+    } else {
+      fetchCode(language);
+    }
+  };
+
+  const handleExplainCodeFromTab = () => {
+    setActiveTab('explain');
+    if (!explanation) {
+      fetchExplanation(null, language);
+    }
+  };
 
   const fetchHint = useCallback(async (level: 1 | 2 | 3) => {
     if (!selectedProblem) return;
@@ -524,10 +534,6 @@ export default function AssistantPage() {
     setCodeQuota(null);
     setComplexityQuota(null);
     
-    // Automatically trigger explanation refetch for new language
-    if (selectedProblem) {
-      fetchExplanation(selectedProblem, lang);
-    }
   };
 
   const goToBilling = () => {
@@ -829,6 +835,23 @@ export default function AssistantPage() {
                       <div className="text-red-400 text-xs text-center py-10 bg-red-500/5 rounded-2xl border border-red-500/10">{explainError}</div>
                     )}
                     
+                    {!explanation && !explainLoading && !explainQuota && (
+                      <div className="text-center py-20 select-none">
+                        <div className="text-6xl mb-4">💡</div>
+                        <h3 className="text-lg font-bold text-white mb-2">Ready to explain this problem</h3>
+                        <p className="text-slate-400 text-sm mb-6 max-w-sm mx-auto font-light">
+                          Get an analogy, approach steps, and deep breakdown
+                        </p>
+                        <button
+                          onClick={() => fetchExplanation(null, language)}
+                          className="px-6 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 cursor-pointer"
+                          style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white' }}
+                        >
+                          Generate Explanation ✨
+                        </button>
+                      </div>
+                    )}
+
                     {explanation && !explainLoading && (
                       <div className="space-y-6">
                         {/* Analogy Box */}
@@ -967,7 +990,7 @@ export default function AssistantPage() {
                         <div className="text-4xl">⌨️</div>
                         <p className="text-xs text-slate-400">Generate optimal code for {availableLanguages.find(l => l.value === language)?.label}</p>
                         <button
-                          onClick={() => fetchCode(language)}
+                          onClick={handleUnlockCode}
                           className="px-5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 hover:scale-105 cursor-pointer"
                           style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white' }}
                         >
@@ -984,12 +1007,22 @@ export default function AssistantPage() {
                           <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border border-white/10 text-slate-400 bg-white/[0.02]">
                             {codeSourceLabel}
                           </span>
-                          <button
-                            onClick={() => { setCodeData(null); fetchCode(language); }}
-                            className="text-[11px] text-slate-500 hover:text-violet-400 transition-colors cursor-pointer"
-                          >
-                            Regenerate Code ↺
-                          </button>
+                          <div className="flex items-center gap-3">
+                            {!explanation && !explainLoading && (
+                              <button
+                                onClick={handleExplainCodeFromTab}
+                                className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors cursor-pointer flex items-center gap-1 font-semibold"
+                              >
+                                <Sparkles className="h-3 w-3" /> Explain Code ✨
+                              </button>
+                            )}
+                            <button
+                              onClick={() => { setCodeData(null); fetchCode(language); }}
+                              className="text-[11px] text-slate-500 hover:text-violet-400 transition-colors cursor-pointer"
+                            >
+                              Regenerate Code ↺
+                            </button>
+                          </div>
                         </div>
                         <CodeBlock code={codeData.code} language={language} />
                       </div>
