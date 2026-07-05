@@ -1,159 +1,140 @@
-# Turborepo starter
+# Placement Prep Platform
 
-This Turborepo starter is maintained by the Turborepo core team.
+Placement Prep is an advanced, AI-powered coding interview preparation platform. It seamlessly bridges the gap between practicing on standard competitive programming platforms (like LeetCode and Codeforces) and getting deep, personalized AI coaching.
 
-## Using this example
+The platform leverages a microservices architecture, featuring a modern web dashboard, a fast API gateway, a dedicated Python AI service for Large Language Model (LLM) orchestration, and a Chrome Extension to automatically sync user submissions.
 
-Run the following command:
+## Key Features
 
-```sh
-npx create-turbo@latest
+- **Seamless Synchronization:** Chrome extension automatically extracts problems and code submissions from LeetCode and Codeforces.
+- **AI-Powered Coaching:** Generates relatable real-world analogies, step-by-step approaches, and dry-run traces for any coding problem.
+- **Progressive Hint System:** Provides tiered hints (from vague nudges to near-pseudocode) without spoiling the answer.
+- **Deep Complexity Analysis:** Line-by-line Big-O time and space complexity audits for user submissions.
+- **Smart Recommendations:** Uses vector search to recommend the most logical follow-up problems.
+
+## Architecture
+
+The project is structured as a monorepo managed by [Turborepo](https://turbo.build/repo).
+
+### High-Level Flow
+
+```mermaid
+graph TD
+    User([User / Student]) --> |Analyzes Progress| Web[Web App<br/>Next.js]
+    User --> |Solves Problems| Ext[Chrome Extension<br/>LeetCode / Codeforces]
+    
+    Web --> |REST API| API[API Gateway<br/>Hono/Node.js]
+    Ext --> |Sync Problem & Code| API
+    
+    API --> |CRUD & Quota Check| DB[(PostgreSQL<br/>Supabase)]
+    API --> |LLM Inference Requests| AI[AI Service<br/>FastAPI]
+    
+    AI --> |Read/Write Solutions| DB
+    AI --> |Semantic Search| Qdrant[(Qdrant Vector DB)]
+    AI -.-> |Generates Explanations| LLM[Google GenAI / Groq]
 ```
 
-## What's inside?
+### Directory Structure
 
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```text
+placement-prep/
+├── apps/
+│   ├── ai-service/   # Python/FastAPI service for LLM tasks
+│   ├── api/          # Node.js/Hono API gateway
+│   ├── extension/    # Chrome Extension for scraping & sync
+│   └── web/          # Next.js web dashboard
+├── infrastructure/   # Dockerfiles and deployment config
+├── docker-compose.yml# Local development orchestration
+├── package.json      # Root package and monorepo scripts
+└── turbo.json        # Turborepo configuration
 ```
 
-Without global `turbo`, use your package manager:
+## Tech Stack
 
-```sh
-cd my-turborepo
-npx turbo build
-npm dlx turbo build
-npm exec turbo build
+- **Monorepo:** Turborepo, npm workspaces
+- **Frontend (`apps/web`):** Next.js 14, React 19, Tailwind CSS v4, GSAP, Recharts, Clerk Auth
+- **API (`apps/api`):** Node.js, Hono, TypeScript, Supabase JS Client, Razorpay
+- **AI Service (`apps/ai-service`):** Python, FastAPI, Google GenAI, Groq, SentenceTransformers, curl_cffi
+- **Extension (`apps/extension`):** Manifest V3 Chrome Extension (Vanilla JS)
+- **Databases:** PostgreSQL (via Supabase), Qdrant (Vector Database via Docker)
+
+## Prerequisites
+
+- **Node.js:** v20+ (with `npm@10+`)
+- **Python:** 3.10+
+- **Docker & Docker Compose:** For running local Qdrant and PostgreSQL databases
+- **API Keys:** Supabase, Clerk, Gemini API, Groq
+
+## Getting Started
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/your-org/placement-prep.git
+cd placement-prep
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+### 2. Install Dependencies
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Install all JavaScript/TypeScript dependencies across the monorepo:
 
-```sh
-turbo build --filter=docs
+```bash
+npm install
 ```
 
-Without global `turbo`:
+### 3. Start Infrastructure
 
-```sh
-npx turbo build --filter=docs
-npm exec turbo build --filter=docs
-npm exec turbo build --filter=docs
+Start the local PostgreSQL database and Qdrant vector database using Docker Compose:
+
+```bash
+docker-compose up -d postgres qdrant
 ```
 
-### Develop
+### 4. Environment Variables
 
-To develop all apps and packages, run the following command:
+Create a `.env` file in the root (or individually in `apps/api`, `apps/web`, `apps/ai-service`) based on the provided `.env.example`. Ensure you populate:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+- Supabase URL & Anon Key
+- Clerk Frontend & Backend Keys
+- Gemini API Key (`GEMINI_API_KEY`)
+- Internal Service Key (`INTERNAL_SERVICE_KEY`) used between `api` and `ai-service`.
 
-```sh
-cd my-turborepo
-turbo dev
+### 5. Run Development Servers
+
+Using Turborepo, you can spin up all development servers (Web, API, and AI Service if integrated) concurrently:
+
+```bash
+npm run dev
 ```
 
-Without global `turbo`, use your package manager:
+This command maps to `turbo run dev --parallel`.
 
-```sh
-cd my-turborepo
-npx turbo dev
-npm exec turbo dev
-npm exec turbo dev
+Alternatively, run them manually in separate terminal windows:
+
+- **Web:** `cd apps/web && npm run dev` (Runs on http://localhost:3000)
+- **API:** `cd apps/api && npm run dev` (Runs on http://localhost:3001)
+- **AI Service:** `cd apps/ai-service && uvicorn app.main:app --reload` (Runs on http://localhost:8000)
+
+### 6. Chrome Extension Setup
+
+1. Open Google Chrome and navigate to `chrome://extensions/`
+2. Enable **Developer mode** in the top right.
+3. Click **Load unpacked** and select the `apps/extension` directory.
+
+## Testing & Linting
+
+```bash
+# Run linting across all packages
+npm run lint
+
+# Run type-checking and tests
+npm run test
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Deployment
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+The services are containerized via the `infrastructure/docker/` directory.
 
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-npm exec turbo dev --filter=web
-npm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-npm exec turbo login
-npm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-npm exec turbo link
-npm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+- **Web & API:** Can be deployed to Vercel, Railway, or Render.
+- **AI Service:** Can be deployed to Render, Fly.io, or Google Cloud Run using the `ai-service.Dockerfile`.
+- **Databases:** Use managed Supabase for PostgreSQL and managed Qdrant Cloud.
