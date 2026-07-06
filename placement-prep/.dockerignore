@@ -1,0 +1,19 @@
+**/node_modules
+**/.next
+**/.turbo
+**/build
+**/dist
+**/out
+**/coverage
+.git
+.github
+*.log
+.DS_Store
+# .env*
+!*.example
+!*.sample
+venv
+.venv
+**/.venv
+__pycache__
+*.pyc
